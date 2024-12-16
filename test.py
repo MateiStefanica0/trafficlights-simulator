@@ -13,31 +13,32 @@ ROAD_COLOR = (0, 0, 0)
 GRID_SIZE = 5
 ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
 ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
-
-# Define offsets for centering the grid within the window
-GRID_OFFSET_X = (WINDOW_WIDTH - (ROAD_WIDTH * GRID_SIZE)) // 2
-GRID_OFFSET_Y = (WINDOW_HEIGHT - (ROAD_HEIGHT * GRID_SIZE)) // 2
 FPS = 60
+VEHICLE_SPAWN_RATE = 10  # 10 vehicles per second
+VEHICLE_SPAWN_DURATION = 15  # 15 seconds
 
 # Initialize screen
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Traffic Simulation")
 
-# Classes
+# Classes (same as previous)
 class TrafficLight:
-    def __init__(self, x, y):
+    def __init__(self, x, y, direction):
         self.x = x
         self.y = y
+        self.direction = direction  # Direction: "horizontal" or "vertical"
         self.state = "red"  # Initial state
         self.last_switch_time = time.time()
         self.switch_interval = 5  # Switch every 5 seconds
 
     def switch_state(self):
+        """Alternates between red and green lights every 5 seconds for each direction"""
         if time.time() - self.last_switch_time >= self.switch_interval:
             self.state = "green" if self.state == "red" else "red"
             self.last_switch_time = time.time()
 
     def draw(self):
+        """Draw the traffic light at the appropriate location"""
         color = (255, 0, 0) if self.state == "red" else (0, 255, 0)
         pygame.draw.circle(screen, color, (self.x, self.y), 15)
 
@@ -49,9 +50,13 @@ class Vehicle:
         self.speed = random.uniform(*speed_range)
         self.direction = direction
         self.stopped = False
+        self.waiting = False  # Flag for waiting
+        self.moving = True  # If the vehicle is allowed to move
+        self.change_direction_requested = False  # Flag to ensure direction is only changed at intersection
+        self.current_intersection = None  # Track the intersection the vehicle is approaching
 
     def move(self):
-        if not self.stopped:
+        if self.moving:
             if self.direction == "right":
                 self.x += self.speed
             elif self.direction == "left":
@@ -60,6 +65,39 @@ class Vehicle:
                 self.y += self.speed
             elif self.direction == "up":
                 self.y -= self.speed
+
+    def stop(self):
+        self.stopped = True
+        self.moving = False
+
+    def resume(self):
+        self.stopped = False
+        self.moving = True
+
+    def change_direction(self):
+        """Change the vehicle's direction randomly."""
+        if not self.change_direction_requested:
+            choice = random.random()
+            if choice < 0.3:  # 30% chance to turn left
+                if self.direction == "up":
+                    self.direction = "left"
+                elif self.direction == "down":
+                    self.direction = "right"
+                elif self.direction == "left":
+                    self.direction = "down"
+                elif self.direction == "right":
+                    self.direction = "up"
+            elif choice < 0.6:  # 30% chance to turn right
+                if self.direction == "up":
+                    self.direction = "right"
+                elif self.direction == "down":
+                    self.direction = "left"
+                elif self.direction == "left":
+                    self.direction = "up"
+                elif self.direction == "right":
+                    self.direction = "down"
+            # 40% chance to continue in the same direction
+            self.change_direction_requested = True  # Direction change request handled
 
     def draw(self):
         if self.shape == "car":
@@ -73,13 +111,26 @@ class Intersection:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.traffic_light = TrafficLight(x, y)
+        self.horizontal_light = TrafficLight(x, y - 20, "horizontal")
+        self.vertical_light = TrafficLight(x - 20, y, "vertical")
+        self.waiting_vehicles = []  # List of vehicles waiting at the intersection
 
     def update(self):
-        self.traffic_light.switch_state()
+        """Update the state of both traffic lights"""
+        self.horizontal_light.switch_state()
+        self.vertical_light.switch_state()
 
     def draw(self):
-        self.traffic_light.draw()
+        """Draw both traffic lights"""
+        self.horizontal_light.draw()
+        self.vertical_light.draw()
+
+    def add_vehicle(self, vehicle):
+        self.waiting_vehicles.append(vehicle)
+
+    def remove_vehicle(self, vehicle):
+        if vehicle in self.waiting_vehicles:
+            self.waiting_vehicles.remove(vehicle)
 
 # Create roads and intersections
 roads = []
@@ -87,42 +138,45 @@ intersections = []
 
 for i in range(GRID_SIZE):
     for j in range(GRID_SIZE):
-        x = GRID_OFFSET_X + i * ROAD_WIDTH
-        y = GRID_OFFSET_Y + j * ROAD_HEIGHT
+        x = (WINDOW_WIDTH - (ROAD_WIDTH * GRID_SIZE)) // 2 + i * ROAD_WIDTH
+        y = (WINDOW_HEIGHT - (ROAD_HEIGHT * GRID_SIZE)) // 2 + j * ROAD_HEIGHT
 
         # Draw horizontal roads and intersections (not on the bottom row)
         if j < GRID_SIZE - 1:  # Exclude bottom-most horizontal line
             roads.append((x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
-            intersections.append(Intersection(x + ROAD_WIDTH, y + ROAD_HEIGHT // 2))
+            if i < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
+                intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
         # Draw vertical roads and intersections (not on the right-most column)
         if i < GRID_SIZE - 1:  # Exclude right-most vertical line
             roads.append((x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
-            intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT))
+            if j < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
+                intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
-# Vehicle spawning
+# Vehicle spawning at the ends of roads
 def spawn_vehicle_on_road(shape, speed_range):
     road = random.choice(roads)
     x, y, width, height = road
 
     if width > height:  # Horizontal road
-        spawn_x = random.randint(x, x + width - 20)
+        # Spawn at the extreme ends (left or right of the road)
+        spawn_x = x if random.random() < 0.5 else x + width - 20
         spawn_y = y + height // 2
-        direction = random.choice(["left", "right"])
+        direction = "left" if spawn_x == x else "right"
     else:  # Vertical road
+        # Spawn at the extreme ends (top or bottom of the road)
         spawn_x = x + width // 2
-        spawn_y = random.randint(y, y + height - 20)
-        direction = random.choice(["up", "down"])
+        spawn_y = y if random.random() < 0.5 else y + height - 20
+        direction = "up" if spawn_y == y else "down"
 
     return Vehicle(spawn_x, spawn_y, shape, speed_range, direction)
 
+# Vehicle spawning timer
+vehicle_spawn_timer = 0  # Timer to keep track of the elapsed time
+vehicle_spawned_count = 0  # Counter for the number of vehicles spawned
+total_vehicle_count = VEHICLE_SPAWN_RATE * VEHICLE_SPAWN_DURATION  # Total vehicles to spawn
+
 vehicles = []
-for _ in range(150):  # Cars
-    vehicles.append(spawn_vehicle_on_road("car", (1, 2)))
-for _ in range(50):  # Motorcycles
-    vehicles.append(spawn_vehicle_on_road("motorcycle", (3, 4)))
-for _ in range(50):  # Trucks
-    vehicles.append(spawn_vehicle_on_road("truck", (0.5, 1.5)))
 
 # Main game loop
 running = True
@@ -132,6 +186,17 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+    # Get the elapsed time since the game started
+    current_time = pygame.time.get_ticks()
+
+    # Spawn vehicles progressively at 10 vehicles per second for 15 seconds
+    if vehicle_spawned_count < total_vehicle_count and (current_time // 1000) < VEHICLE_SPAWN_DURATION:
+        if current_time // 1000 > vehicle_spawn_timer:
+            for _ in range(VEHICLE_SPAWN_RATE):  # Spawn 10 vehicles
+                vehicles.append(spawn_vehicle_on_road("car", (1, 2)))  # You can change the shape and speed as needed
+                vehicle_spawned_count += 1
+            vehicle_spawn_timer = current_time // 1000  # Update the timer
 
     screen.fill(BACKGROUND_COLOR)
 
@@ -146,20 +211,38 @@ while running:
 
     # Update and draw vehicles
     for vehicle in vehicles:
-        vehicle.move()
-
-        # Stop at red lights
+        # Check if the vehicle is at an intersection and the light is red
         for intersection in intersections:
             if (
                 intersection.x - 15 <= vehicle.x <= intersection.x + 15 and
-                intersection.y - 15 <= vehicle.y <= intersection.y + 15 and
-                intersection.traffic_light.state == "red"
+                intersection.y - 15 <= vehicle.y <= intersection.y + 15
             ):
-                vehicle.stopped = True
-                break
-        else:
-            vehicle.stopped = False
+                vehicle.current_intersection = intersection  # Store the intersection vehicle is at
 
+                # Handle horizontal traffic light
+                if vehicle.direction in ["left", "right"]:
+                    if intersection.horizontal_light.state == "red":
+                        vehicle.stop()
+                        intersection.add_vehicle(vehicle)
+                    else:
+                        if vehicle in intersection.waiting_vehicles:
+                            intersection.remove_vehicle(vehicle)
+                        vehicle.resume()
+
+                # Handle vertical traffic light
+                elif vehicle.direction in ["up", "down"]:
+                    if intersection.vertical_light.state == "red":
+                        vehicle.stop()
+                        intersection.add_vehicle(vehicle)
+                    else:
+                        if vehicle in intersection.waiting_vehicles:
+                            intersection.remove_vehicle(vehicle)
+                        vehicle.resume()
+
+                # Change direction at the intersection if the light is green
+                vehicle.change_direction()
+
+        vehicle.move()
         vehicle.draw()
 
     pygame.display.flip()
