@@ -136,10 +136,17 @@ class Intersection:
 roads = []
 intersections = []
 
+# Calculate starting position for the grid (center the grid on the screen)
+grid_width = GRID_SIZE * ROAD_WIDTH
+grid_height = GRID_SIZE * ROAD_HEIGHT
+start_x = (WINDOW_WIDTH - grid_width) // 2
+start_y = (WINDOW_HEIGHT - grid_height) // 2
+
+# Create roads and intersections
 for i in range(GRID_SIZE):
     for j in range(GRID_SIZE):
-        x = (WINDOW_WIDTH - (ROAD_WIDTH * GRID_SIZE)) // 2 + i * ROAD_WIDTH
-        y = (WINDOW_HEIGHT - (ROAD_HEIGHT * GRID_SIZE)) // 2 + j * ROAD_HEIGHT
+        x = start_x + i * ROAD_WIDTH
+        y = start_y + j * ROAD_HEIGHT
 
         # Draw horizontal roads and intersections (not on the bottom row)
         if j < GRID_SIZE - 1:  # Exclude bottom-most horizontal line
@@ -153,21 +160,56 @@ for i in range(GRID_SIZE):
             if j < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
-# Vehicle spawning at the ends of roads
+# Vehicle spawning at the outer edges of the roads
 def spawn_vehicle_on_road(shape, speed_range):
-    road = random.choice(roads)
+    # Select only the roads at the edges of the screen
+    edge_roads = []
+
+    # Add horizontal roads at the top and bottom edges (only the beginning of the roads)
+    for road in roads:
+        x, y, width, height = road
+        if y == 0:  # Top edge (beginning of the road)
+            edge_roads.append(road)
+        if y + height == WINDOW_HEIGHT:  # Bottom edge (beginning of the road)
+            edge_roads.append(road)
+
+    # Add vertical roads at the left and right edges (only the beginning of the roads)
+    for road in roads:
+        x, y, width, height = road
+        if x == 0:  # Left edge (beginning of the road)
+            edge_roads.append(road)
+        if x + width == WINDOW_WIDTH:  # Right edge (beginning of the road)
+            edge_roads.append(road)
+
+    # Randomly select an edge road
+    road = random.choice(edge_roads)
     x, y, width, height = road
 
+    # Determine the spawn location based on whether the road is horizontal or vertical
     if width > height:  # Horizontal road
-        # Spawn at the extreme ends (left or right of the road)
-        spawn_x = x if random.random() < 0.5 else x + width - 20
+        spawn_x = x  # Spawn at the leftmost part of the road (beginning)
         spawn_y = y + height // 2
-        direction = "left" if spawn_x == x else "right"
+        
+        if x < WINDOW_WIDTH / 2:  # If it's the topmost horizontal road
+            direction = "right"  # Vehicle should move to the right
+        else:  # If it's the bottommost horizontal road
+            direction = "left"  # Vehicle should move to the left
+
     else:  # Vertical road
-        # Spawn at the extreme ends (top or bottom of the road)
         spawn_x = x + width // 2
-        spawn_y = y if random.random() < 0.5 else y + height - 20
-        direction = "up" if spawn_y == y else "down"
+        spawn_y = y  # Spawn at the topmost part of the road (beginning)
+
+        # If the road is on the right edge, make vehicles go left
+        if x + width == WINDOW_WIDTH:
+            direction = "left"  # Ensure vehicles go left from the right edge
+        # If the road is on the left edge, make vehicles go right
+        elif x == 0:
+            direction = "right"  # Vehicles spawned on the left edge should move right
+        # If the road is on the bottom edge, make vehicles go up
+        elif y + height == WINDOW_HEIGHT:
+            direction = "up"
+        else:
+            direction = "down"  # Default for other vertical roads
 
     return Vehicle(spawn_x, spawn_y, shape, speed_range, direction)
 
