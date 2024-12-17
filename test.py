@@ -64,16 +64,98 @@ class Vehicle:
         self.change_direction_requested = False  # Flag to ensure direction is only changed at intersection
         self.current_intersection = None  # Track the intersection the vehicle is approaching
 
-    def move(self):
+    def get_hitbox(self):
+        """Returns the hitbox of the vehicle (x, y, width, height)"""
+        if self.shape == "car":
+            return pygame.Rect(self.x, self.y, 20, 20)  # Example hitbox for a car
+        elif self.shape == "motorcycle":
+            return pygame.Rect(self.x, self.y, 20, 20)  # Example hitbox for a motorcycle
+        elif self.shape == "truck":
+            return pygame.Rect(self.x, self.y, 30, 20)  # Example hitbox for a truck
+        return pygame.Rect(self.x, self.y, 20, 20)
+
+    def check_collision(self, vehicles, direction):
+        """Checks if the vehicle collides with any other vehicles in the direction of movement."""
+        
+        # Depending on the direction of movement, we check for collisions only along that direction
+        for vehicle in vehicles:
+            if vehicle != self:  # Don't check collision with itself
+                if direction == "up":
+                    # Only check vehicles ahead of the current vehicle
+                    if self.get_hitbox().colliderect(vehicle.get_hitbox()) and vehicle.y < self.y:
+                        return True
+
+                elif direction == "down":
+                    # Only check vehicles ahead of the current vehicle
+                    if self.get_hitbox().colliderect(vehicle.get_hitbox()) and vehicle.y > self.y:
+                        return True
+
+                elif direction == "left":
+                    # Only check vehicles ahead of the current vehicle
+                    if self.get_hitbox().colliderect(vehicle.get_hitbox()) and vehicle.x < self.x:
+                        return True
+
+                elif direction == "right":
+                    # Only check vehicles ahead of the current vehicle
+                    if self.get_hitbox().colliderect(vehicle.get_hitbox()) and vehicle.x > self.x:
+                        return True
+                    
+        return False
+
+
+    def move(self, vehicles, intersections):
         if self.moving:
+            # Check if the vehicle is at an intersection
+            for intersection in intersections:
+                # Only check if the vehicle is near an intersection
+                if (
+                    (self.direction in ["left", "right"] and abs(self.y - intersection.y) < 10 and
+                    abs(self.x - intersection.x) <= DISTANCE_FROM_INTERSECTION) or
+                    (self.direction in ["up", "down"] and abs(self.x - intersection.x) < 10 and
+                    abs(self.y - intersection.y) <= DISTANCE_FROM_INTERSECTION)
+                ):
+                    vehicle_current_intersection = intersection  # Store the intersection vehicle is at
+                    
+                    # Handle horizontal traffic light
+                    if self.direction in ["left", "right"]:
+                        if intersection.horizontal_light.state == "red":
+                            self.stop()  # Stop the vehicle if the light is red
+                            return  # Don't continue the move if the light is red
+                        else:
+                            self.resume()  # Resume if the light is green
+
+                    # Handle vertical traffic light
+                    elif self.direction in ["up", "down"]:
+                        if intersection.vertical_light.state == "red":
+                            self.stop()  # Stop the vehicle if the light is red
+                            return  # Don't continue the move if the light is red
+                        else:
+                            self.resume()  # Resume if the light is green
+            
+            # If the light is green or the vehicle is not at an intersection, continue moving
+            new_x = self.x
+            new_y = self.y
+
             if self.direction == "right":
-                self.x += self.speed
+                new_x += self.speed
             elif self.direction == "left":
-                self.x -= self.speed
+                new_x -= self.speed
             elif self.direction == "down":
-                self.y += self.speed
+                new_y += self.speed
             elif self.direction == "up":
-                self.y -= self.speed
+                new_y -= self.speed
+
+            # Temporarily set the new position
+            self.x, self.y = new_x, new_y
+
+            # Check for collision
+            if self.check_collision(vehicles, self.direction):
+                self.stop()
+            else:
+                self.resume()
+
+
+
 
                 
 
@@ -296,13 +378,17 @@ while running:
         intersection.draw()
 
     # Update and draw vehicles
+    # Update and draw vehicles
     for vehicle in vehicles:
         # Check if the vehicle is at an intersection and the light is red
         for intersection in intersections:
             if (
-                intersection.x - DISTANCE_FROM_INTERSECTION <= vehicle.x <= intersection.x + DISTANCE_FROM_INTERSECTION and
-                intersection.y - DISTANCE_FROM_INTERSECTION <= vehicle.y <= intersection.y + DISTANCE_FROM_INTERSECTION
+                (vehicle.direction in ["left", "right"] and abs(vehicle.y - intersection.y) < 10 and
+                abs(vehicle.x - intersection.x) <= DISTANCE_FROM_INTERSECTION) or
+                (vehicle.direction in ["up", "down"] and abs(vehicle.x - intersection.x) < 10 and
+                abs(vehicle.y - intersection.y) <= DISTANCE_FROM_INTERSECTION)
             ):
+
                 vehicle.current_intersection = intersection  # Store the intersection vehicle is at
 
                 # Handle horizontal traffic light
@@ -328,8 +414,9 @@ while running:
                 # Change direction at the intersection if the light is green
                 vehicle.change_direction()
 
-        vehicle.move()
+        vehicle.move(vehicles, intersections)  # Pass the list of vehicles to check for collisions
         vehicle.draw()
+
 
     pygame.display.flip()
     clock.tick(FPS)
