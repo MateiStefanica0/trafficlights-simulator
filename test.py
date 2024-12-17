@@ -1,6 +1,7 @@
 import pygame
 import random
 import time
+from queue import Queue
 
 # Initialize Pygame
 pygame.init()
@@ -10,12 +11,14 @@ WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 BACKGROUND_COLOR = (255, 255, 255)
 ROAD_COLOR = (0, 0, 0)
-GRID_SIZE = 5
+GRID_SIZE = 4
 ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
 ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
 FPS = 60
 VEHICLE_SPAWN_RATE = 10  # 10 vehicles per second
 VEHICLE_SPAWN_DURATION = 15  # 15 seconds
+
+DISTANCE_FROM_INTERSECTION = 15
 
 # Initialize screen
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -72,6 +75,8 @@ class Vehicle:
             elif self.direction == "up":
                 self.y -= self.speed
 
+                
+
     def stop(self):
         self.stopped = True
         self.moving = False
@@ -81,29 +86,41 @@ class Vehicle:
         self.moving = True
 
     def change_direction(self):
-        """Change the vehicle's direction randomly."""
+        """Change the vehicle's direction randomly and update its position first."""
         if not self.change_direction_requested:
+
+            # Now, change the vehicle's direction
             choice = random.random()
             if choice < 0.3:  # 30% chance to turn left
                 if self.direction == "up":
+                    self.y -= DISTANCE_FROM_INTERSECTION
                     self.direction = "left"
                 elif self.direction == "down":
+                    self.y += DISTANCE_FROM_INTERSECTION
                     self.direction = "right"
                 elif self.direction == "left":
+                    self.x -= DISTANCE_FROM_INTERSECTION
                     self.direction = "down"
                 elif self.direction == "right":
+                    self.x += DISTANCE_FROM_INTERSECTION
                     self.direction = "up"
             elif choice < 0.6:  # 30% chance to turn right
                 if self.direction == "up":
+                    self.y -= DISTANCE_FROM_INTERSECTION
                     self.direction = "right"
                 elif self.direction == "down":
+                    self.y += DISTANCE_FROM_INTERSECTION
                     self.direction = "left"
                 elif self.direction == "left":
+                    self.x -= DISTANCE_FROM_INTERSECTION
                     self.direction = "up"
                 elif self.direction == "right":
+                    self.x += DISTANCE_FROM_INTERSECTION
                     self.direction = "down"
-            # 40% chance to continue in the same direction
+
+            # 40% chance to continue in the same direction (no position change)
             self.change_direction_requested = True  # Direction change request handled
+
 
     def draw(self):
         if self.shape == "car":
@@ -128,6 +145,11 @@ class Intersection:
         self.horizontal_light = TrafficLight(x, y - 20, "horizontal")
         self.vertical_light = TrafficLight(x - 20, y, "vertical")
         self.waiting_vehicles = []  # List of vehicles waiting at the intersection
+        self.left_queue = Queue()
+        self.right_queue = Queue()
+        self.up_queue = Queue()
+        self.down_queue = Queue()
+
 
     def update(self):
         """Update the state of both traffic lights"""
@@ -151,6 +173,8 @@ class Intersection:
 
     def add_vehicle(self, vehicle):
         self.waiting_vehicles.append(vehicle)
+
+    
 
     def remove_vehicle(self, vehicle):
         if vehicle in self.waiting_vehicles:
@@ -176,14 +200,14 @@ for i in range(GRID_SIZE):
         if j < GRID_SIZE:  # Exclude bottom-most horizontal line
             # roads.append((x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
             roads.append(Road(x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
-            if i < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
+            if i < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
         # Draw vertical roads and intersections (not on the right-most column)
         if i < GRID_SIZE:  # Exclude right-most vertical line
             # roads.append((x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
             roads.append(Road(x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
-            if j < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
+            if j < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
 # Vehicle spawning at the outer edges of the roads
@@ -276,8 +300,8 @@ while running:
         # Check if the vehicle is at an intersection and the light is red
         for intersection in intersections:
             if (
-                intersection.x - 15 <= vehicle.x <= intersection.x + 15 and
-                intersection.y - 15 <= vehicle.y <= intersection.y + 15
+                intersection.x - DISTANCE_FROM_INTERSECTION <= vehicle.x <= intersection.x + DISTANCE_FROM_INTERSECTION and
+                intersection.y - DISTANCE_FROM_INTERSECTION <= vehicle.y <= intersection.y + DISTANCE_FROM_INTERSECTION
             ):
                 vehicle.current_intersection = intersection  # Store the intersection vehicle is at
 
