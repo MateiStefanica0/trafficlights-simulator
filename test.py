@@ -118,6 +118,7 @@ class Road:
         self.x = x
         self.y = y
         self.width = width
+        self.height = height
 
 
 class Intersection:
@@ -173,13 +174,15 @@ for i in range(GRID_SIZE):
 
         # Draw horizontal roads and intersections (not on the bottom row)
         if j < GRID_SIZE:  # Exclude bottom-most horizontal line
-            roads.append((x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
+            # roads.append((x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
+            roads.append(Road(x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
             if i < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
         # Draw vertical roads and intersections (not on the right-most column)
         if i < GRID_SIZE:  # Exclude right-most vertical line
-            roads.append((x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
+            # roads.append((x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
+            roads.append(Road(x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
             if j < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
@@ -190,39 +193,39 @@ def spawn_vehicle_on_road(shape, speed_range):
 
     # Add horizontal roads at the top and bottom edges (only the beginning of the roads)
     for road in roads:
-        x, y, width, height = road
-        if y == 0:  # Top edge (beginning of the road)
+        # x, y, width, height = road
+        if road.y == 0:  # Top edge (beginning of the road)
             edge_roads.append(road)
-        if y + height == WINDOW_HEIGHT:  # Bottom edge (beginning of the road)
+        if road.y + road.height == WINDOW_HEIGHT:  # Bottom edge (beginning of the road)
             edge_roads.append(road)
 
     # Add vertical roads at the left and right edges (only the beginning of the roads)
     for road in roads:
-        x, y, width, height = road
-        if x == 0:  # Left edge (beginning of the road)
+        # x, y, width, height = road
+        if road.x == 0:  # Left edge (beginning of the road)
             edge_roads.append(road)
-        if x + width == WINDOW_WIDTH:  # Right edge (beginning of the road)
+        if road.x + road.width == WINDOW_WIDTH:  # Right edge (beginning of the road)
             edge_roads.append(road)
 
     # Randomly select an edge road
     road = random.choice(edge_roads)
-    x, y, width, height = road
+    # x, y, width, height = road
 
     # Determine the spawn location based on whether the road is horizontal or vertical
-    if width > height:  # Horizontal road
-        spawn_x = x  # Spawn at the leftmost part of the road
-        spawn_y = y + height // 2  # Center on the road vertically
+    if road.width > road.height:  # Horizontal road
+        spawn_x = road.x  # Spawn at the leftmost part of the road
+        spawn_y = road.y + road.height // 2  # Center on the road vertically
 
-        if y < WINDOW_HEIGHT / 2:  # If it's the topmost horizontal road
+        if road.y < WINDOW_HEIGHT / 2:  # If it's the topmost horizontal road
             direction = "right"  # Vehicle moves to the right
         else:  # If it's the bottommost horizontal road
             direction = "left"  # Vehicle moves to the left
 
     else:  # Vertical road
-        spawn_x = x + width // 2  # Center on the road horizontally
-        spawn_y = y  # Spawn at the topmost part of the road
+        spawn_x = road.x + road.width // 2  # Center on the road horizontally
+        spawn_y = road.y  # Spawn at the topmost part of the road
 
-        if x < WINDOW_WIDTH / 2:  # If it's the leftmost vertical road
+        if road.x < WINDOW_WIDTH / 2:  # If it's the leftmost vertical road
             direction = "down"  # Vehicle moves down
         else:  # If it's the rightmost vertical road
             direction = "up"  # Vehicle moves up
@@ -261,7 +264,7 @@ while running:
 
     # Draw roads
     for road in roads:
-        pygame.draw.rect(screen, ROAD_COLOR, road)
+        pygame.draw.rect(screen, ROAD_COLOR, (road.x, road.y, road.width, road.height))
 
     # Update and draw intersections
     for intersection in intersections:
