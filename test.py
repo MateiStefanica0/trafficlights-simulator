@@ -6,8 +6,8 @@ import time
 pygame.init()
 
 # Constants
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 800
 BACKGROUND_COLOR = (255, 255, 255)
 ROAD_COLOR = (0, 0, 0)
 GRID_SIZE = 5
@@ -34,12 +34,18 @@ class TrafficLight:
     def switch_state(self):
         """Alternates between red and green lights every 5 seconds for each direction"""
         if time.time() - self.last_switch_time >= self.switch_interval:
-            self.state = "green" if self.state == "red" else "red"
+            if self.state == "red":
+                self.state = "green"
+            else:
+                self.state = "red"
             self.last_switch_time = time.time()
 
     def draw(self):
         """Draw the traffic light at the appropriate location"""
-        color = (255, 0, 0) if self.state == "red" else (0, 255, 0)
+        if self.state == "red":
+            color = (255, 0, 0)
+        else:
+            color = (0, 255, 0)
         pygame.draw.circle(screen, color, (self.x, self.y), 15)
 
 class Vehicle:
@@ -107,6 +113,13 @@ class Vehicle:
         elif self.shape == "truck":
             pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, 30, 20))
 
+class Road:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+
+
 class Intersection:
     def __init__(self, x, y):
         self.x = x
@@ -117,8 +130,18 @@ class Intersection:
 
     def update(self):
         """Update the state of both traffic lights"""
-        self.horizontal_light.switch_state()
-        self.vertical_light.switch_state()
+        # self.horizontal_light.switch_state()
+        # self.vertical_light.switch_state()
+        if self.horizontal_light.state == "red":
+            self.vertical_light.switch_state()
+        else:
+            self.horizontal_light.switch_state()
+
+        if self.vertical_light.state == "red":
+            self.horizontal_light.switch_state()
+        else:
+            self.vertical_light.switch_state()
+
 
     def draw(self):
         """Draw both traffic lights"""
@@ -149,13 +172,13 @@ for i in range(GRID_SIZE):
         y = start_y + j * ROAD_HEIGHT
 
         # Draw horizontal roads and intersections (not on the bottom row)
-        if j < GRID_SIZE - 1:  # Exclude bottom-most horizontal line
+        if j < GRID_SIZE:  # Exclude bottom-most horizontal line
             roads.append((x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
             if i < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
 
         # Draw vertical roads and intersections (not on the right-most column)
-        if i < GRID_SIZE - 1:  # Exclude right-most vertical line
+        if i < GRID_SIZE:  # Exclude right-most vertical line
             roads.append((x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
             if j < GRID_SIZE - 1:  # Only add traffic lights where horizontal and vertical roads meet
                 intersections.append(Intersection(x + ROAD_WIDTH // 2, y + ROAD_HEIGHT // 2))
@@ -187,29 +210,23 @@ def spawn_vehicle_on_road(shape, speed_range):
 
     # Determine the spawn location based on whether the road is horizontal or vertical
     if width > height:  # Horizontal road
-        spawn_x = x  # Spawn at the leftmost part of the road (beginning)
-        spawn_y = y + height // 2
-        
-        if x < WINDOW_WIDTH / 2:  # If it's the topmost horizontal road
-            direction = "right"  # Vehicle should move to the right
+        spawn_x = x  # Spawn at the leftmost part of the road
+        spawn_y = y + height // 2  # Center on the road vertically
+
+        if y < WINDOW_HEIGHT / 2:  # If it's the topmost horizontal road
+            direction = "right"  # Vehicle moves to the right
         else:  # If it's the bottommost horizontal road
-            direction = "left"  # Vehicle should move to the left
+            direction = "left"  # Vehicle moves to the left
 
     else:  # Vertical road
-        spawn_x = x + width // 2
-        spawn_y = y  # Spawn at the topmost part of the road (beginning)
+        spawn_x = x + width // 2  # Center on the road horizontally
+        spawn_y = y  # Spawn at the topmost part of the road
 
-        # If the road is on the right edge, make vehicles go left
-        if x + width == WINDOW_WIDTH:
-            direction = "left"  # Ensure vehicles go left from the right edge
-        # If the road is on the left edge, make vehicles go right
-        elif x == 0:
-            direction = "right"  # Vehicles spawned on the left edge should move right
-        # If the road is on the bottom edge, make vehicles go up
-        elif y + height == WINDOW_HEIGHT:
-            direction = "up"
-        else:
-            direction = "down"  # Default for other vertical roads
+        if x < WINDOW_WIDTH / 2:  # If it's the leftmost vertical road
+            direction = "down"  # Vehicle moves down
+        else:  # If it's the rightmost vertical road
+            direction = "up"  # Vehicle moves up
+
 
     return Vehicle(spawn_x, spawn_y, shape, speed_range, direction)
 
