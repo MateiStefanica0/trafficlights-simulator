@@ -480,7 +480,17 @@ def toggle_play_pause():
     is_paused = not is_paused
     play_pause_button.text = "Pause" if not is_paused else "Play"
 
+
+def reset_simulation():
+    global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused
+    vehicles = []
+    vehicle_spawn_timer = 0
+    vehicle_spawned_count = 0
+    is_paused = True
+    play_pause_button.text = "Play"
+
 play_pause_button = Button(WINDOW_WIDTH - 110, 10, 100, 50, "Play", toggle_play_pause)
+reset_button = Button(WINDOW_WIDTH - 110, 70, 100, 50, "Reset", reset_simulation)
 
 
 # Main game loop
@@ -497,6 +507,7 @@ while running:
                 if spawn_point.is_clicked(mouse_pos):
                     spawn_point.toggle_active()
             play_pause_button.handle_event(event)
+            reset_button.handle_event(event)
 
     # Get the elapsed time since the game started
     current_time = pygame.time.get_ticks()
@@ -580,11 +591,11 @@ while running:
 
     # Update and draw vehicles
     for vehicle in vehicles:
-        
         vehicle.draw()
 
     vehicles = [vehicle for vehicle in vehicles if vehicle.x >= 0 and vehicle.x <= WINDOW_WIDTH and vehicle.y >= 0 and vehicle.y <= WINDOW_HEIGHT]
     play_pause_button.draw(screen)
+    reset_button.draw(screen)
 
     pygame.display.flip()
     clock.tick(FPS)
