@@ -2,27 +2,35 @@ import pygame
 import random
 import time
 from queue import Queue
+import tkinter as tk
+from tkinter import messagebox
 
-# Initialize Pygame
-pygame.init()
+is_paused = True
 
 # Constants
+global GRID_SIZE
+global VEHICLE_SPAWN_RATE
+global VEHICLE_SPAWN_DURATION
+global ROAD_WIDTH
+global ROAD_HEIGHT
+
+GRID_SIZE = 0
+VEHICLE_SPAWN_RATE = 0
+VEHICLE_SPAWN_DURATION = 0
+
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 BACKGROUND_COLOR = (255, 255, 255)
 ROAD_COLOR = (0, 0, 0)
-GRID_SIZE = 4
-ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
-ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
+
+
 FPS = 60
-VEHICLE_SPAWN_RATE = 3  # 10 vehicles per second
-VEHICLE_SPAWN_DURATION = 10  # 15 seconds
+
 
 DISTANCE_FROM_INTERSECTION = 30
 
 # Initialize screen
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("Traffic Simulation")
+
 
 # Classes (same as previous)
 class TrafficLight:
@@ -97,7 +105,21 @@ class Vehicle:
                         return True
         return False
 
-
+    def is_waiting_at_intersection(self, intersection):
+        # Check if the vehicle is waiting at the given intersection
+        if self.direction == "up" and self.y <= intersection.y + (WINDOW_HEIGHT / GRID_SIZE) \
+             and abs(self.x - intersection.x) < 30:
+            return True
+        elif self.direction == "down" and self.y >= intersection.y - (WINDOW_HEIGHT / GRID_SIZE) \
+            and abs(self.x - intersection.x) < 30:
+            return True
+        elif self.direction == "left" and self.x <= intersection.x + (WINDOW_WIDTH / GRID_SIZE) \
+            and abs(self.y - intersection.y) < 30:
+            return True
+        elif self.direction == "right" and self.x >= intersection.x - (WINDOW_WIDTH / GRID_SIZE) \
+            and abs(self.y - intersection.y) < 30:
+            return True
+        return False
 
     def move(self, vehicles, intersections):
         if self.current_intersection:
@@ -118,6 +140,10 @@ class Vehicle:
             self.current_intersection.remove_vehicle(self)
             self.current_intersection = None  # Clear intersection after passing
 
+            # Add a chance to change direction at the intersection
+            if random.random() < 0.3:  # 50% chance to change direction
+                self.change_direction()
+
         # Check for collisions
         if self.check_collision(vehicles, self.direction):
             self.stop()
@@ -125,12 +151,12 @@ class Vehicle:
 
         if self.direction == "right" or self.direction == "left":
             target_lane_y = self.current_road.get_lane_positions(self.direction)
-            if abs(self.y - target_lane_y) > 1:  # Correct position gradually
+            if target_lane_y is not None and abs(self.y - target_lane_y) > 1:  # Correct position gradually
                 self.y += (target_lane_y - self.y) * 0.1
 
         elif self.direction == "down" or self.direction == "up":
             target_lane_x = self.current_road.get_lane_positions(self.direction)
-            if abs(self.x - target_lane_x) > 1:  # Correct position gradually
+            if target_lane_x is not None and abs(self.x - target_lane_x) > 1:  # Correct position gradually
                 self.x += (target_lane_x - self.x) * 0.1
 
         # Continue moving in the current direction
@@ -143,17 +169,12 @@ class Vehicle:
         elif self.direction == "up":
             self.y -= self.speed
 
-
-
-
-
     def switch_axis(self):
         if self.axis == "horizontal":
             self.axis = "vertical"
         else:
             self.axis = "horizontal"
-
-                
+ 
 
     def stop(self):
         self.stopped = True
@@ -166,38 +187,42 @@ class Vehicle:
     def change_direction(self):
         """Change the vehicle's direction randomly and update its position first."""
         if not self.change_direction_requested:
-
-            # Now, change the vehicle's direction
             choice = random.random()
             if choice < 0.3:  # 30% chance to turn left
                 if self.direction == "up":
-                    self.y -= DISTANCE_FROM_INTERSECTION
+                    self.y -= DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "left"
                 elif self.direction == "down":
-                    self.y += DISTANCE_FROM_INTERSECTION
+                    self.y += DISTANCE_FROM_INTERSECTION / 2 
                     self.direction = "right"
                 elif self.direction == "left":
-                    self.x -= DISTANCE_FROM_INTERSECTION
+                    self.x -= DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "down"
                 elif self.direction == "right":
-                    self.x += DISTANCE_FROM_INTERSECTION
+                    self.x += DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "up"
             elif choice < 0.6:  # 30% chance to turn right
                 if self.direction == "up":
-                    self.y -= DISTANCE_FROM_INTERSECTION
+                    self.y -= DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "right"
                 elif self.direction == "down":
-                    self.y += DISTANCE_FROM_INTERSECTION
+                    self.y += DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "left"
                 elif self.direction == "left":
-                    self.x -= DISTANCE_FROM_INTERSECTION
+                    self.x -= DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "up"
                 elif self.direction == "right":
-                    self.x += DISTANCE_FROM_INTERSECTION
+                    self.x += DISTANCE_FROM_INTERSECTION / 2
                     self.direction = "down"
+            
+            # Align the vehicle's position to the nearest grid line
+            self.x = round(self.x / GRID_SIZE) * GRID_SIZE
+            self.y = round(self.y / GRID_SIZE) * GRID_SIZE
+            
             self.switch_axis()
             # 40% chance to continue in the same direction (no position change)
             self.change_direction_requested = True  # Direction change request handled
+
 
 
     def draw(self):
@@ -207,6 +232,11 @@ class Vehicle:
             pygame.draw.polygon(screen, (0, 255, 0), [(self.x, self.y), (self.x + 10, self.y - 20), (self.x + 20, self.y)])
         elif self.shape == "truck":
             pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, 30, 20))
+
+    def check_window_bounds(self, vehicles):
+        if self.x != self.spawn_x and self.y != self.spawn_y:
+            if self.x > WINDOW_WIDTH or self.x < WINDOW_WIDTH or self.y > WINDOW_HEIGHT or self.y > WINDOW_WIDTH:
+                vehicles.remove(self)
 
 class Road:
     def __init__(self, x, y, width, height, lanes=2):
@@ -259,11 +289,38 @@ class Intersection:
         self.horizontal_light = TrafficLight(x, y - 20, "horizontal")
         self.vertical_light = TrafficLight(x - 20, y, "vertical")
         self.waiting_vehicles = []  # List of vehicles waiting at the intersection
-        self.left_queue = Queue()
-        self.right_queue = Queue()
-        self.up_queue = Queue()
-        self.down_queue = Queue()
+        self.cars_waiting_up_down = 0
+        self.cars_waiting_left_right = 0
+        self.light_state = "green_up_down"  # Initial state
+        self.last_toggle_time = time.time()
 
+    def update_cars_waiting(self, vehicles):
+        # Reset counters
+        self.cars_waiting_up_down = 0
+        self.cars_waiting_left_right = 0
+
+        for vehicle in vehicles:
+            if vehicle.is_waiting_at_intersection(self):
+                if vehicle.direction in ["up", "down"]:
+                    self.cars_waiting_up_down += 1
+                elif vehicle.direction in ["left", "right"]:
+                    self.cars_waiting_left_right += 1
+
+    def toggle_traffic_lights(self):
+        current_time = time.time()
+        if (current_time - self.last_toggle_time > 2):
+            if self.cars_waiting_up_down > 7 or self.cars_waiting_left_right > 7:
+                if self.light_state == "green_up_down":
+                    self.light_state = "green_left_right"
+                else:
+                    self.light_state = "green_up_down"
+                self.last_toggle_time = current_time
+            elif current_time - self.last_toggle_time > 5:
+                if self.light_state == "green_up_down":
+                    self.light_state = "green_left_right"
+                else:
+                    self.light_state = "green_up_down"
+                self.last_toggle_time = current_time
 
 
     def update(self):
@@ -283,6 +340,12 @@ class Intersection:
 
     def draw(self):
         """Draw both traffic lights"""
+        if self.light_state == "green_up_down":
+            self.vertical_light.state = "green"
+            self.horizontal_light.state = "red"
+        else:
+            self.vertical_light.state = "red"
+            self.horizontal_light.state = "green"
         self.horizontal_light.draw()
         self.vertical_light.draw()
 
@@ -295,160 +358,341 @@ class Intersection:
         if vehicle in self.waiting_vehicles:
             self.waiting_vehicles.remove(vehicle)
 
+class SpawnPoint:
+    def __init__(self, pos, road):
+        self.pos = pos
+        self.active = False
+        self.road = road
+
+    def toggle_active(self):
+        self.active = not self.active
+
+    def draw(self, screen):
+        color = (0, 255, 0) if self.active else (0, 0, 0)
+        pygame.draw.circle(screen, color, self.pos, 10)
+
+    def is_clicked(self, mouse_pos):
+        x, y = self.pos
+        mx, my = mouse_pos
+        return (x - 10 <= mx <= x + 10) and (y - 10 <= my <= y + 10)
+
+class Button:
+    def __init__(self, x, y, width, height, text, callback):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.callback = callback
+        self.font = pygame.font.Font(None, 36)
+        self.color = (0, 0, 0)
+        self.hover_color = (100, 100, 100)
+        self.active_color = self.color
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.active_color, self.rect)
+        text_surface = self.font.render(self.text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.rect.center)
+        screen.blit(text_surface, text_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            if self.rect.collidepoint(event.pos):
+                self.active_color = self.hover_color
+            else:
+                self.active_color = self.color
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                self.callback()
 
 
 
-# Create roads and intersections
-roads = []
-intersections = []
+def run_pygame_simulation():
+    # Initialize Pygame
+    global is_paused, vehicles, vehicle_spawn_timer, vehicle_spawned_count
+    is_paused = True
+    vehicles = []
+    vehicle_spawn_timer = 0
+    vehicle_spawned_count = 0
+    pygame.init()
 
-# Calculate starting position for the grid (center the grid on the screen)
-grid_width = GRID_SIZE * ROAD_WIDTH
-grid_height = GRID_SIZE * ROAD_HEIGHT
-start_x = (WINDOW_WIDTH - grid_width) // 2
-start_y = (WINDOW_HEIGHT - grid_height) // 2
+    global screen
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("TrafficLights Simulation")
 
-# Create roads and intersections
-for i in range(GRID_SIZE):
-    for j in range(GRID_SIZE):
-        x = start_x + i * ROAD_WIDTH
-        y = start_y + j * ROAD_HEIGHT
+    # Create roads and intersections
+    roads = []
+    intersections = []
 
-        # Draw horizontal roads and intersections (not on the bottom row)
-        if j < GRID_SIZE:  # Exclude bottom-most horizontal line
-            roads.append(Road(x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
-            if i < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
-                intersection_x = x + ROAD_WIDTH // 2
-                intersection_y = y + ROAD_HEIGHT // 2
-                intersections.append(Intersection(intersection_x, intersection_y))  # Place intersection at road crossing
+    # Calculate starting position for the grid (center the grid on the screen)
+    grid_width = GRID_SIZE * ROAD_WIDTH
+    grid_height = GRID_SIZE * ROAD_HEIGHT
+    start_x = (WINDOW_WIDTH - grid_width) // 2
+    start_y = (WINDOW_HEIGHT - grid_height) // 2
 
-        # Draw vertical roads and intersections (not on the right-most column)
-        if i < GRID_SIZE:  # Exclude right-most vertical line
-            roads.append(Road(x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
-            if j < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
-                intersection_x = x + ROAD_WIDTH // 2
-                intersection_y = y + ROAD_HEIGHT // 2
-                intersections.append(Intersection(intersection_x, intersection_y))  # Place intersection at road crossing
+    # Create roads and intersections
+    for i in range(GRID_SIZE):
+        for j in range(GRID_SIZE):
+            x = start_x + i * ROAD_WIDTH
+            y = start_y + j * ROAD_HEIGHT
 
+            # Draw horizontal roads and intersections (not on the bottom row)
+            if j < GRID_SIZE:  # Exclude bottom-most horizontal line
+                roads.append(Road(x, y + ROAD_HEIGHT // 2 - 5, ROAD_WIDTH, 10))
+                if i < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
+                    intersection_x = x + ROAD_WIDTH // 2
+                    intersection_y = y + ROAD_HEIGHT // 2
+                    intersections.append(Intersection(intersection_x, intersection_y))  # Place intersection at road crossing
 
-# Ensure roads match the grid layout correctly
-
-
-def spawn_vehicle_on_road(shape, speed_range):
-    edge_roads = [road for road in roads if (
-        road.x == start_x or 
-        road.x + road.width == start_x + grid_width or 
-        road.y == start_y or 
-        road.y + road.height == start_y + grid_height
-    )]
-
-    road = random.choice(edge_roads)
-    if road.width > road.height:  # Horizontal road
-        spawn_x = road.x if road.x == start_x else road.x + road.width - 20
-        direction = "right" if spawn_x == road.x else "left"
-        spawn_y = road.get_lane_positions(direction)
-    else:  # Vertical road
-        spawn_y = road.y if road.y == start_y else road.y + road.height - 20
-        direction = "down" if spawn_y == road.y else "up"
-        spawn_x = road.get_lane_positions(direction)
-
-    vehicle = Vehicle(spawn_x, spawn_y, shape, speed_range, direction)
-    vehicle.current_road = road  # Assign current road
-    return vehicle
+            # Draw vertical roads and intersections (not on the right-most column)
+            if i < GRID_SIZE:  # Exclude right-most vertical line
+                roads.append(Road(x + ROAD_WIDTH // 2 - 5, y, 10, ROAD_HEIGHT))
+                if j < GRID_SIZE:  # Only add traffic lights where horizontal and vertical roads meet
+                    intersection_x = x + ROAD_WIDTH // 2
+                    intersection_y = y + ROAD_HEIGHT // 2
+                    intersections.append(Intersection(intersection_x, intersection_y))  # Place intersection at road crossing
 
 
+    # Ensure roads match the grid layout correctly
 
 
-# Vehicle spawning timer
-vehicle_spawn_timer = 0  # Timer to keep track of the elapsed time
-vehicle_spawned_count = 0  # Counter for the number of vehicles spawned
-total_vehicle_count = VEHICLE_SPAWN_RATE * VEHICLE_SPAWN_DURATION  # Total vehicles to spawn
+    def spawn_vehicle_on_road(spawn_point, shape, speed_range):
+        road = spawn_point.road
+        spawn_x, spawn_y = spawn_point.pos
+        direction = None
 
-vehicles = []
+        if road.width > road.height:  # Horizontal road
+            direction = "right" if spawn_x < road.x + road.width // 2 else "left"
+        else:  # Vertical road
+            direction = "down" if spawn_y < road.y + road.height // 2 else "up"
 
-# Main game loop
-running = True
-clock = pygame.time.Clock()
+        vehicle = Vehicle(spawn_x, spawn_y, shape, speed_range, direction)
 
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
 
-    # Get the elapsed time since the game started
-    current_time = pygame.time.get_ticks()
+        vehicle.spawn_x = spawn_x
+        vehicle.spawn_y = spawn_y
+        vehicle.current_road = road  # Assign current road
+        return vehicle
 
-    # Spawn vehicles progressively at the specified rate
-    if vehicle_spawned_count < total_vehicle_count and (current_time // 1000) < VEHICLE_SPAWN_DURATION:
-        if current_time // 1000 > vehicle_spawn_timer:
-            for _ in range(VEHICLE_SPAWN_RATE):
-                vehicles.append(spawn_vehicle_on_road("car", (1, 2)))  # Adjust shape/speed if needed
-                vehicle_spawned_count += 1
-            vehicle_spawn_timer = current_time // 1000  # Update the timer
 
-    screen.fill(BACKGROUND_COLOR)
 
-    # Draw roads
+
+    # Vehicle spawning timer
+    vehicle_spawn_timer = 0  # Timer to keep track of the elapsed time
+    vehicle_spawned_count = 0  # Counter for the number of vehicles spawned
+    total_vehicle_count = VEHICLE_SPAWN_RATE * VEHICLE_SPAWN_DURATION  # Total vehicles to spawn
+
+    vehicles = []
+
+    # Define spawn points at the edges of the screen
+    spawn_points = []
+
     for road in roads:
-        road.draw()
-        pygame.draw.line(screen, (0, 255, 255), 
-                     (road.x, road.y), 
-                     (road.x + road.width, road.y + road.height), 1)
+        if road.width > road.height:  # Horizontal road
+            if road.x == start_x:  # Left edge
+                spawn_points.append(SpawnPoint((road.x + 30, road.y + road.height // 2), road))
+            elif road.x + road.width == start_x + grid_width:  # Right edge
+                spawn_points.append(SpawnPoint((road.x + road.width - 30, road.y + road.height // 2), road))
+        else:  # Vertical road
+            if road.y == start_y:  # Top edge
+                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + 30), road))
+            elif road.y + road.height == start_y + grid_height:  # Bottom edge
+                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + road.height - 30), road))
 
-    # Update and draw intersections
-    for intersection in intersections:
-        intersection.update()
-        intersection.draw()
-        pygame.draw.circle(screen, (255, 0, 255), (intersection.x, intersection.y), 5)
 
-    # Update and draw vehicles
-    # Update vehicle's intersection logic
-    # Check if the vehicle is near an intersection
-    for vehicle in vehicles:
-        vehicle_near_intersection = False
+
+    def toggle_play_pause():
+        global is_paused
+        is_paused = not is_paused
+        play_pause_button.text = "Pause" if not is_paused else "Play"
+
+
+    def reset_simulation():
+        global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused
+        vehicles = []
+        vehicle_spawn_timer = 0
+        vehicle_spawned_count = 0
+        is_paused = True
+        play_pause_button.text = "Play"
+
+    play_pause_button = Button(WINDOW_WIDTH - 110, 10, 100, 50, "Play", toggle_play_pause)
+    reset_button = Button(WINDOW_WIDTH - 110, 70, 100, 50, "Reset", reset_simulation)
+
+
+    # Main game loop
+    running = True
+    clock = pygame.time.Clock()
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                for spawn_point in spawn_points:
+                    if spawn_point.is_clicked(mouse_pos):
+                        spawn_point.toggle_active()
+                play_pause_button.handle_event(event)
+                reset_button.handle_event(event)
+
+        # Get the elapsed time since the game started
+        current_time = pygame.time.get_ticks()
+
+        # Spawn vehicles progressively at the specified rate
+        if vehicle_spawned_count < total_vehicle_count and (current_time // 1000) < VEHICLE_SPAWN_DURATION:
+            if current_time // 1000 > vehicle_spawn_timer:
+                for spawn_point in spawn_points:
+                    if spawn_point.active:
+                        for _ in range(VEHICLE_SPAWN_RATE):
+                            vehicles.append(spawn_vehicle_on_road(spawn_point, "car", (1, 2)))  # Adjust shape/speed if needed
+                            vehicle_spawned_count += 1
+                vehicle_spawn_timer = current_time // 1000  # Update the timer
+
+        screen.fill(BACKGROUND_COLOR)
+
+        # Draw roads
+        for road in roads:
+            road.draw()
+            pygame.draw.line(screen, (0, 255, 255), 
+                        (road.x, road.y), 
+                        (road.x + road.width, road.y + road.height), 1)
+
+        # Draw spawn points
+        for spawn_point in spawn_points:
+            spawn_point.draw(screen)
+
+        # Update and draw intersections
         for intersection in intersections:
-            # Check proximity to the intersection based on direction
-            if (
-                (vehicle.direction == "left" and 
-                vehicle.x - intersection.x <= DISTANCE_FROM_INTERSECTION and
-                vehicle.x > intersection.x and  # Ensure approaching, not passed
-                abs(vehicle.y - intersection.y) < ROAD_WIDTH // 2) or
-                (vehicle.direction == "right" and 
-                intersection.x - vehicle.x <= DISTANCE_FROM_INTERSECTION and
-                vehicle.x < intersection.x and
-                abs(vehicle.y - intersection.y) < ROAD_WIDTH // 2) or
-                (vehicle.direction == "up" and 
-                vehicle.y - intersection.y <= DISTANCE_FROM_INTERSECTION and
-                vehicle.y > intersection.y and
-                abs(vehicle.x - intersection.x) < ROAD_HEIGHT // 2) or
-                (vehicle.direction == "down" and 
-                intersection.y - vehicle.y <= DISTANCE_FROM_INTERSECTION and
-                vehicle.y < intersection.y and
-                abs(vehicle.x - intersection.x) < ROAD_HEIGHT // 2)
-            ):
-                vehicle.current_intersection = intersection  # Assign intersection
-                vehicle_near_intersection = True
-
-                # Handle stopping at red light
-                if (vehicle.direction in ["left", "right"] and 
-                    intersection.horizontal_light.state == "red") or \
-                (vehicle.direction in ["up", "down"] and 
-                    intersection.vertical_light.state == "red"):
-                    vehicle.stop()
-                else:
-                    vehicle.resume()
-                break  # No need to check other intersections once it's assigned
-
-        if not vehicle_near_intersection:
-            vehicle.current_intersection = None  # Reset if not near an intersection
+            # print(time.time())
+            intersection.draw()
+            pygame.draw.circle(screen, (255, 0, 255), (intersection.x, intersection.y), 5)
 
 
+        if not is_paused:
+            for intersection in intersections:
+                intersection.update_cars_waiting(vehicles)
+                intersection.toggle_traffic_lights()
 
-        # Update vehicle movement and draw
-        vehicle.move(vehicles, intersections)  # Pass list of vehicles and intersections for logic
-        vehicle.draw()
+            for vehicle in vehicles:
+                vehicle_near_intersection = False
+                for intersection in intersections:
+                    # Check proximity to the intersection based on direction
+                    if (
+                        (vehicle.direction == "left" and 
+                        vehicle.x - intersection.x <= DISTANCE_FROM_INTERSECTION and
+                        vehicle.x > intersection.x and  # Ensure approaching, not passed
+                        abs(vehicle.y - intersection.y) < ROAD_WIDTH // 2) or
+                        (vehicle.direction == "right" and 
+                        intersection.x - vehicle.x <= DISTANCE_FROM_INTERSECTION and
+                        vehicle.x < intersection.x and
+                        abs(vehicle.y - intersection.y) < ROAD_WIDTH // 2) or
+                        (vehicle.direction == "up" and 
+                        vehicle.y - intersection.y <= DISTANCE_FROM_INTERSECTION and
+                        vehicle.y > intersection.y and
+                        abs(vehicle.x - intersection.x) < ROAD_HEIGHT // 2) or
+                        (vehicle.direction == "down" and 
+                        intersection.y - vehicle.y <= DISTANCE_FROM_INTERSECTION and
+                        vehicle.y < intersection.y and
+                        abs(vehicle.x - intersection.x) < ROAD_HEIGHT // 2)
+                    ):
+                        vehicle.current_intersection = intersection  # Assign intersection
+                        vehicle_near_intersection = True
 
-    pygame.display.flip()
-    clock.tick(FPS)
+                        # Handle stopping at red light
+                        if (vehicle.direction in ["left", "right"] and 
+                            intersection.horizontal_light.state == "red") or \
+                        (vehicle.direction in ["up", "down"] and 
+                            intersection.vertical_light.state == "red"):
+                            vehicle.stop()
+                        else:
+                            vehicle.resume()
+                        break  # No need to check other intersections once it's assigned
 
-pygame.quit()
+                if not vehicle_near_intersection:
+                    vehicle.current_intersection = None  # Reset if not near an intersection
+
+                # Update vehicle movement and draw
+                vehicle.move(vehicles, intersections)  # Pass list of vehicles and intersections for logic
+            
+
+        # Update and draw vehicles
+        for vehicle in vehicles:
+            vehicle.draw()
+
+        vehicles = [vehicle for vehicle in vehicles if vehicle.x >= 0 and vehicle.x <= WINDOW_WIDTH and vehicle.y >= 0 and vehicle.y <= WINDOW_HEIGHT]
+        play_pause_button.draw(screen)
+        reset_button.draw(screen)
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    pygame.quit()
+
+def start_simulation():
+    root.destroy()  # Close the Tkinter window
+    run_pygame_simulation()  # Function to run the Pygame simulation
+
+
+if __name__ == "__main__":
+    def open_settings():
+        settings_window = tk.Toplevel(root)
+        settings_window.title("Settings")
+        settings_window.geometry("400x300")
+
+        tk.Label(settings_window, text="Grid Size:").pack(pady=5)
+        grid_size_entry = tk.Entry(settings_window)
+        grid_size_entry.insert(0, str(GRID_SIZE))
+        grid_size_entry.pack(pady=5)
+
+        tk.Label(settings_window, text="Car Number:").pack(pady=5)
+        car_number_entry = tk.Entry(settings_window)
+        car_number_entry.insert(0, str(VEHICLE_SPAWN_RATE))
+        car_number_entry.pack(pady=5)
+
+        tk.Label(settings_window, text="Number of Seconds:").pack(pady=5)
+        seconds_entry = tk.Entry(settings_window)
+        seconds_entry.insert(0, str(VEHICLE_SPAWN_DURATION))
+        seconds_entry.pack(pady=5)
+
+        def save_settings():
+            global GRID_SIZE, VEHICLE_SPAWN_RATE, VEHICLE_SPAWN_DURATION, ROAD_WIDTH, ROAD_HEIGHT
+            GRID_SIZE = int(grid_size_entry.get())
+            VEHICLE_SPAWN_RATE = int(car_number_entry.get())
+            VEHICLE_SPAWN_DURATION = int(seconds_entry.get())
+            ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
+            ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
+            settings_window.destroy()
+            update_settings_display()
+
+        save_button = tk.Button(settings_window, text="Save", command=save_settings)
+        save_button.pack(pady=20)
+
+    def update_settings_display():
+        settings_text.set(f"Grid Size: {GRID_SIZE}\nCar Number: {VEHICLE_SPAWN_RATE}\nNumber of Seconds: {VEHICLE_SPAWN_DURATION}")
+
+    # Initialize default settings
+    GRID_SIZE = 0
+    VEHICLE_SPAWN_RATE = 0
+    VEHICLE_SPAWN_DURATION = 0
+
+    root = tk.Tk()
+    root.title("Traffic Simulation")
+    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+
+    # Create a menu bar
+    menu_bar = tk.Menu(root)
+    root.config(menu=menu_bar)
+
+    # Add a "Settings" menu
+    settings_menu = tk.Menu(menu_bar, tearoff=0)
+    menu_bar.add_cascade(label="Settings", menu=settings_menu)
+    settings_menu.add_command(label="Open Settings", command=open_settings)
+
+    # Create and center the start button
+    start_button = tk.Button(root, text="Start Simulation", command=start_simulation)
+    start_button.pack(expand=True)
+
+    # Display current settings
+    settings_text = tk.StringVar()
+    settings_label = tk.Label(root, textvariable=settings_text)
+    settings_label.pack(pady=20)
+    update_settings_display()
+
+    root.mainloop()
