@@ -3,7 +3,7 @@ import random
 import time
 from queue import Queue
 import tkinter as tk
-from tkinter import messagebox
+import sys
 
 is_paused = True
 
@@ -79,6 +79,7 @@ class Vehicle:
             self.axis = "vertical"
         else:
             self.axis = "horizontal"
+        self.counted = False
 
     def get_hitbox(self):
         """Returns the hitbox of the vehicle, extended in the direction of movement."""
@@ -139,6 +140,7 @@ class Vehicle:
                     self.current_intersection.add_vehicle(self)
                     return
 
+
             # Light is green; resume movement and remove from queue
             self.resume()
             self.current_intersection.remove_vehicle(self)
@@ -195,6 +197,10 @@ class Vehicle:
             self.waiting_time += waiting_duration
             total_waiting_time += waiting_duration
             self.last_stop_time = None
+        if self.current_intersection and not self.counted:
+            self.current_intersection.increment_car_count()
+            self.counted = True
+        
 
     def change_direction(self):
         """Change the vehicle's direction randomly and update its position first."""
@@ -306,6 +312,7 @@ class Intersection:
         self.light_state = "green_up_down"  # Initial state
         self.last_toggle_time = time.time()
         self.index = index
+        self.car_count = 0
 
     def update_cars_waiting(self, vehicles):
         # Reset counters
@@ -318,6 +325,9 @@ class Intersection:
                     self.cars_waiting_up_down += 1
                 elif vehicle.direction in ["left", "right"]:
                     self.cars_waiting_left_right += 1
+
+    def increment_car_count(self):
+        self.car_count += 1
 
     def toggle_traffic_lights(self):
         current_time = time.time()
@@ -545,9 +555,57 @@ def run_pygame_simulation():
         text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
         screen.blit(text_surface, text_rect)
 
+    def show_stats():
+        global running, stats_window
+        running = False  # Stop the Pygame event loop
+        pygame.quit()  # Quit Pygame
+
+        # Suppress the root Tkinter window
+        root = tk.Tk()
+        root.withdraw()  # Hide the main Tkinter window
+
+        # Create the statistics window
+        stats_window = tk.Toplevel()
+        stats_window.title("Statistics")
+        stats_window.geometry("400x300")
+
+        # Display some statistics
+        stats_label = tk.Label(stats_window, text="Statistics will be displayed here.")
+        stats_label.pack(pady=20)
+
+        # Example statistics
+        total_cars = sum(intersection.car_count for intersection in intersections)
+        stats_text = f"Total Cars: {total_cars}\n"
+        for intersection in intersections:
+            stats_text += f"Intersection {intersection.index}: {intersection.car_count} cars passed through\n"
+
+        stats_label.config(text=stats_text)
+
+        # Add "Back to the simulation" button
+        back_button = tk.Button(stats_window, text="Back to the simulation", command=back_to_menu)
+        back_button.pack(pady=20)
+
+        # Add "Exit" button
+        exit_button = tk.Button(stats_window, text="Exit", command=exit_program)
+        exit_button.pack(pady=20)
+
+        # Keep the statistics window open
+        stats_window.mainloop()
+
+    def back_to_menu():
+        global stats_window
+        stats_window.destroy()  # Close the stats window
+        initialize_tkinter_window()  # Restart the Tkinter window to start the simulation again
+
+
+    # Buttons
+
     play_pause_button = Button(WINDOW_WIDTH - 110, 10, 100, 50, "Play", toggle_play_pause)
     reset_button = Button(WINDOW_WIDTH - 110, 70, 100, 50, "Reset", reset_simulation)
-    menu_button = Button(WINDOW_WIDTH - 110, 130, 100, 50, "Menu", show_menu)
+    menu_button = Button(100, 10, 100, 50, "Menu", show_menu)
+    stats_button = Button(WINDOW_WIDTH - 110, 130, 100, 50, "Stats", show_stats)  # Add Stats button in upper right corner
+    exit_button = Button(10, WINDOW_HEIGHT - 60, 100, 50, "Exit", exit_simulation)
+    
 
 
     # Main game loop
@@ -566,6 +624,8 @@ def run_pygame_simulation():
                 play_pause_button.handle_event(event)
                 reset_button.handle_event(event)
                 menu_button.handle_event(event)
+                stats_button.handle_event(event)
+                exit_button.handle_event(event)
 
         # Get the elapsed time since the game started
         current_time = pygame.time.get_ticks()
@@ -658,6 +718,8 @@ def run_pygame_simulation():
         play_pause_button.draw(screen)
         reset_button.draw(screen)
         menu_button.draw(screen)
+        stats_button.draw(screen)
+        exit_button.draw(screen)
 
         # Calculate and draw total waiting time
         total_waiting_time = get_total_waiting_time()
@@ -665,6 +727,8 @@ def run_pygame_simulation():
 
         if len(vehicles) == 0 and vehicle_spawned_count >= total_vehicle_count:
             draw_simulation_ended_message(screen)
+            for intersection in intersections:
+                print(f"Intersection {intersection.index}: {intersection.car_count} cars passed through")
 
         pygame.display.flip()
         clock.tick(FPS)
@@ -736,6 +800,10 @@ def initialize_tkinter_window():
     start_button = tk.Button(root, text="Start Simulation", command=lambda: start_simulation(root))
     start_button.pack(expand=True)
 
+    # Create the exit button
+    exit_button = tk.Button(root, text="Exit", command=exit_program)
+    exit_button.pack(pady=20)
+
     # Display current settings
     settings_text = tk.StringVar()
     settings_label = tk.Label(root, textvariable=settings_text)
@@ -751,6 +819,13 @@ def start_simulation(root):
 def show_menu():
     pygame.quit()
     initialize_tkinter_window()
+
+def exit_simulation():
+    pygame.quit()
+    sys.exit()  # Terminate the program
+
+def exit_program():
+    sys.exit()
 
 if __name__ == "__main__":
     initialize_tkinter_window()
