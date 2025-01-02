@@ -17,6 +17,7 @@ global VEHICLE_SPAWN_DURATION
 global ROAD_WIDTH
 global ROAD_HEIGHT
 global TIME_TO_REPAIR
+global is_raining
 
 GRID_SIZE = 3
 VEHICLE_SPAWN_RATE = 2
@@ -27,6 +28,7 @@ TIME_TO_REPAIR = 3
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 BACKGROUND_COLOR = (255, 255, 255)
+RAINING_BG_COLOR = (199, 235, 252)
 ROAD_COLOR = (0, 0, 0)
 
 
@@ -38,6 +40,10 @@ DISTANCE_FROM_INTERSECTION = 30
 
 total_waiting_time = 0
 break_count = 0
+global start_time
+start_time = None
+elapsed_time = 0
+simulation_ended = False
 
 
 
@@ -566,19 +572,43 @@ def run_pygame_simulation():
 
 
     def toggle_play_pause():
-        global is_paused
+        global is_paused, start_time, paused_time
         is_paused = not is_paused
+        if not is_paused:
+            if start_time is None:
+                start_time = time.time()  # Set the start time when play is pressed
+            else:
+                # Adjust start_time to account for the paused duration
+                start_time += time.time() - paused_time
+        else:
+            paused_time = time.time()  # Record the time when paused
+
         play_pause_button.text = "Pause" if not is_paused else "Play"
 
 
+    def draw_elapsed_time(screen, start_time):
+        global elapsed_time, simulation_ended
+        if start_time is not None and not is_paused and not simulation_ended:
+            elapsed_time = time.time() - start_time
+
+        font = pygame.font.Font(None, 36)
+        text_surface = font.render(f"Elapsed Time: {elapsed_time:.2f} s", True, (0, 0, 0))
+        screen.blit(text_surface, (WINDOW_WIDTH - text_surface.get_width() - 10, WINDOW_HEIGHT - text_surface.get_height() - 50))
+            
+
+
     def reset_simulation():
-        global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused, total_waiting_time
+        global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused, total_waiting_time, break_count, elapsed_time, is_raining, simulation_ended
         vehicles = []
         vehicle_spawn_timer = 0
         vehicle_spawned_count = 0
         is_paused = True
         play_pause_button.text = "Play"
         total_waiting_time = 0
+        break_count = 0
+        elapsed_time = 0
+        is_raining = False
+        simulation_ended = False
 
     def draw_simulation_ended_message(screen):
         font = pygame.font.Font(None, 72)
@@ -598,16 +628,21 @@ def run_pygame_simulation():
         # Create the statistics window
         stats_window = tk.Toplevel()
         stats_window.title("Statistics")
-        stats_window.geometry("1200x800")
+        stats_window.geometry("1200x1000")
 
         # Display some statistics
         stats_label = tk.Label(stats_window, text="Statistics will be displayed here.")
-        stats_label.pack(pady=20)
+        stats_label.pack(pady=10)
 
         # Display break count
         break_text = f"Times a car broke: {break_count}\n"
         breaks_label = tk.Label(stats_window, text=break_text)
-        breaks_label.pack(pady=20)
+        breaks_label.pack(pady=10)
+
+        # Display elapsed time
+        elapsed_time_text = f"Elapsed Time: {elapsed_time:.2f} s\n"
+        elapsed_time_label = tk.Label(stats_window, text=elapsed_time_text)
+        elapsed_time_label.pack(pady=10)  # Reduced padding
 
 
         # Example statistics
@@ -653,20 +688,36 @@ def run_pygame_simulation():
         stats_window.destroy()  # Close the stats window
         initialize_tkinter_window()  # Restart the Tkinter window to start the simulation again
 
+    def start_raining():
+        global is_raining
+        is_raining = not is_raining
+        if is_raining:
+            for vehicle in vehicles:
+                vehicle.speed *= 0.4  # Reduce speed to 60%
+        else:
+            for vehicle in vehicles:
+                vehicle.speed /= 0.4  # Restore original speed
 
     # Buttons
 
     play_pause_button = Button(WINDOW_WIDTH - 110, 10, 100, 50, "Play", toggle_play_pause)
     reset_button = Button(WINDOW_WIDTH - 110, 70, 100, 50, "Reset", reset_simulation)
-    menu_button = Button(100, 10, 100, 50, "Menu", show_menu)
+    menu_button = Button(10, 10, 100, 50, "Menu", show_menu)
     stats_button = Button(WINDOW_WIDTH - 110, 130, 100, 50, "Stats", show_stats)  # Add Stats button in upper right corner
-    exit_button = Button(10, WINDOW_HEIGHT - 60, 100, 50, "Exit", exit_simulation)
+    exit_button = Button(10, 70, 100, 50, "Exit", exit_program)
+    rain_button = Button(10, WINDOW_HEIGHT - 60, 150, 50, "Starts raining", start_raining)
+
+    
+    
     
 
+   
 
     # Main game loop
     running = True
     clock = pygame.time.Clock()
+    global is_raining
+    is_raining = False
 
     while running:
         for event in pygame.event.get():
@@ -682,6 +733,7 @@ def run_pygame_simulation():
                 menu_button.handle_event(event)
                 stats_button.handle_event(event)
                 exit_button.handle_event(event)
+                rain_button.handle_event(event)
 
         # Get the elapsed time since the game started
         current_time = pygame.time.get_ticks()
@@ -689,7 +741,11 @@ def run_pygame_simulation():
         # Spawn vehicles progressively at the specified rate
         
 
-        screen.fill(BACKGROUND_COLOR)
+         # Fill the screen with a slightly bluer color if raining
+        if is_raining:
+            screen.fill(RAINING_BG_COLOR)
+        else:
+            screen.fill(BACKGROUND_COLOR)
 
         # Draw roads
         for road in roads:
@@ -776,12 +832,17 @@ def run_pygame_simulation():
         menu_button.draw(screen)
         stats_button.draw(screen)
         exit_button.draw(screen)
+        rain_button.draw(screen)
 
         # Calculate and draw total waiting time
         total_waiting_time = get_total_waiting_time()
         draw_total_waiting_time(screen, total_waiting_time)
 
+        # Draw elapsed time
+        draw_elapsed_time(screen, start_time)
+        global simulation_ended
         if len(vehicles) == 0 and vehicle_spawned_count >= total_vehicle_count:
+            simulation_ended = True
             draw_simulation_ended_message(screen)
 
         pygame.display.flip()
@@ -833,9 +894,6 @@ def initialize_tkinter_window():
     GRID_SIZE = 2
     VEHICLE_SPAWN_RATE = 2
     VEHICLE_SPAWN_DURATION = 15
-
-    ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
-    ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
 
     root = tk.Tk()
     root.title("Traffic Simulation")
