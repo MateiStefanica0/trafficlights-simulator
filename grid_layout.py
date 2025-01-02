@@ -4,6 +4,9 @@ import time
 from queue import Queue
 import tkinter as tk
 import sys
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.ticker import MaxNLocator
 
 is_paused = True
 
@@ -13,10 +16,13 @@ global VEHICLE_SPAWN_RATE
 global VEHICLE_SPAWN_DURATION
 global ROAD_WIDTH
 global ROAD_HEIGHT
+global TIME_TO_REPAIR
 
 GRID_SIZE = 3
 VEHICLE_SPAWN_RATE = 2
 VEHICLE_SPAWN_DURATION = 15
+
+TIME_TO_REPAIR = 3
 
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -31,6 +37,7 @@ DISTANCE_FROM_INTERSECTION = 30
 
 
 total_waiting_time = 0
+break_count = 0
 
 
 
@@ -80,6 +87,10 @@ class Vehicle:
         else:
             self.axis = "horizontal"
         self.counted = False
+        self.broken = False  # Flag to indicate if the vehicle is broken
+        self.break_time = None  # Time when the vehicle broke down
+        self.chance_to_break = 0.0001  # 0.1% chance to break while moving
+        self.animation_start_time = None  # Time when the animation started
 
     def get_hitbox(self):
         """Returns the hitbox of the vehicle, extended in the direction of movement."""
@@ -127,53 +138,70 @@ class Vehicle:
         return False
 
     def move(self, vehicles, intersections):
-        if self.current_intersection:
-            # Check if the vehicle is waiting at an intersection
-            if self.direction in ["left", "right"]:
-                if self.current_intersection.horizontal_light.state == "red":
-                    self.stop()
-                    self.current_intersection.add_vehicle(self)
-                    return
-            elif self.direction in ["up", "down"]:
-                if self.current_intersection.vertical_light.state == "red":
-                    self.stop()
-                    self.current_intersection.add_vehicle(self)
-                    return
 
+        global break_count
 
-            # Light is green; resume movement and remove from queue
-            self.resume()
-            self.current_intersection.remove_vehicle(self)
-            self.current_intersection = None  # Clear intersection after passing
-
-            # Add a chance to change direction at the intersection
-            if random.random() < 0.3:  # 50% chance to change direction
-                self.change_direction()
-
-        # Check for collisions
-        if self.check_collision(vehicles, self.direction):
-            self.stop()
+        if self.broken and self.break_time:
+            if time.time() - self.break_time >= TIME_TO_REPAIR:  # 3 seconds to repair
+                self.broken = False
+                self.resume()
             return
 
-        if self.direction == "right" or self.direction == "left":
-            target_lane_y = self.current_road.get_lane_positions(self.direction)
-            if target_lane_y is not None and abs(self.y - target_lane_y) > 1:  # Correct position gradually
-                self.y += (target_lane_y - self.y) * 0.1
+        rand = random.random()
+        if rand < self.chance_to_break:
+            self.broken = True
+            self.break_time = time.time()
+            self.animation_start_time = time.time()
+            self.stop()
+            break_count += 1
+            return
+        if not self.broken:
+            if self.current_intersection:
+                # Check if the vehicle is waiting at an intersection
+                if self.direction in ["left", "right"]:
+                    if self.current_intersection.horizontal_light.state == "red":
+                        self.stop()
+                        self.current_intersection.add_vehicle(self)
+                        return
+                elif self.direction in ["up", "down"]:
+                    if self.current_intersection.vertical_light.state == "red":
+                        self.stop()
+                        self.current_intersection.add_vehicle(self)
+                        return
 
-        elif self.direction == "down" or self.direction == "up":
-            target_lane_x = self.current_road.get_lane_positions(self.direction)
-            if target_lane_x is not None and abs(self.x - target_lane_x) > 1:  # Correct position gradually
-                self.x += (target_lane_x - self.x) * 0.1
+                # Light is green; resume movement and remove from queue
+                self.resume()
+                self.current_intersection.remove_vehicle(self)
+                self.current_intersection = None  # Clear intersection after passing
 
-        # Continue moving in the current direction
-        if self.direction == "right":
-            self.x += self.speed
-        elif self.direction == "left":
-            self.x -= self.speed
-        elif self.direction == "down":
-            self.y += self.speed
-        elif self.direction == "up":
-            self.y -= self.speed
+                # Add a chance to change direction at the intersection
+                if random.random() < 0.3:  # 50% chance to change direction
+                    self.change_direction()
+
+            # Check for collisions
+            if self.check_collision(vehicles, self.direction):
+                self.stop()
+                return
+
+            if self.direction == "right" or self.direction == "left":
+                target_lane_y = self.current_road.get_lane_positions(self.direction)
+                if target_lane_y is not None and abs(self.y - target_lane_y) > 1:  # Correct position gradually
+                    self.y += (target_lane_y - self.y) * 0.1
+
+            elif self.direction == "down" or self.direction == "up":
+                target_lane_x = self.current_road.get_lane_positions(self.direction)
+                if target_lane_x is not None and abs(self.x - target_lane_x) > 1:  # Correct position gradually
+                    self.x += (target_lane_x - self.x) * 0.1
+
+            # Continue moving in the current direction
+            if self.direction == "right":
+                self.x += self.speed
+            elif self.direction == "left":
+                self.x -= self.speed
+            elif self.direction == "down":
+                self.y += self.speed
+            elif self.direction == "up":
+                self.y -= self.speed
 
     def switch_axis(self):
         if self.axis == "horizontal":
@@ -250,6 +278,9 @@ class Vehicle:
             pygame.draw.polygon(screen, (0, 255, 0), [(self.x, self.y), (self.x + 10, self.y - 20), (self.x + 20, self.y)])
         elif self.shape == "truck":
             pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, 30, 20))
+
+        if self.broken and self.animation_start_time and time.time() - self.animation_start_time <= 1:
+            pygame.draw.circle(screen, (255, 0, 0), (self.x + 30, self.y), 10)
 
     def check_window_bounds(self, vehicles):
         if self.x != self.spawn_x and self.y != self.spawn_y:
@@ -556,7 +587,7 @@ def run_pygame_simulation():
         screen.blit(text_surface, text_rect)
 
     def show_stats():
-        global running, stats_window
+        global running, stats_window, break_count
         running = False  # Stop the Pygame event loop
         pygame.quit()  # Quit Pygame
 
@@ -567,17 +598,42 @@ def run_pygame_simulation():
         # Create the statistics window
         stats_window = tk.Toplevel()
         stats_window.title("Statistics")
-        stats_window.geometry("400x300")
+        stats_window.geometry("1200x800")
 
         # Display some statistics
         stats_label = tk.Label(stats_window, text="Statistics will be displayed here.")
         stats_label.pack(pady=20)
 
+        # Display break count
+        break_text = f"Times a car broke: {break_count}\n"
+        breaks_label = tk.Label(stats_window, text=break_text)
+        breaks_label.pack(pady=20)
+
+
         # Example statistics
+
         total_cars = sum(intersection.car_count for intersection in intersections)
+        intersection_indices = [intersection.index for intersection in intersections]
+        car_counts = [intersection.car_count for intersection in intersections]
+        total_cars = sum(intersection.car_count for intersection in intersections)
+
         stats_text = f"Total Cars: {total_cars}\n"
-        for intersection in intersections:
-            stats_text += f"Intersection {intersection.index}: {intersection.car_count} cars passed through\n"
+
+        fig, ax = plt.subplots()
+        ax.bar(intersection_indices, car_counts)
+        ax.set_xlabel('Intersection Index')
+        ax.set_ylabel('Number of Cars')
+        ax.set_title('Number of Cars Passed Through Each Intersection')
+
+        # Only use integers
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+
+        # Embed the bar graph in the Tkinter window
+        canvas = FigureCanvasTkAgg(fig, master=stats_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(pady=20)
 
         stats_label.config(text=stats_text)
 
@@ -727,8 +783,6 @@ def run_pygame_simulation():
 
         if len(vehicles) == 0 and vehicle_spawned_count >= total_vehicle_count:
             draw_simulation_ended_message(screen)
-            for intersection in intersections:
-                print(f"Intersection {intersection.index}: {intersection.car_count} cars passed through")
 
         pygame.display.flip()
         clock.tick(FPS)
