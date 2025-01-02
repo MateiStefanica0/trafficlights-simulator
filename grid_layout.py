@@ -1,12 +1,16 @@
 import pygame
 import random
 import time
-from queue import Queue
 import tkinter as tk
+from tkinter import messagebox
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.ticker import MaxNLocator
+import threading
+
+import matplotlib
+matplotlib.use('Agg')
 
 is_paused = True
 
@@ -30,6 +34,7 @@ WINDOW_HEIGHT = 800
 BACKGROUND_COLOR = (255, 255, 255)
 RAINING_BG_COLOR = (199, 235, 252)
 ROAD_COLOR = (0, 0, 0)
+VIOLET_COLOR = (140, 16, 235)
 
 
 FPS = 60
@@ -44,6 +49,12 @@ global start_time
 start_time = None
 elapsed_time = 0
 simulation_ended = False
+paused_time = None
+violet_vehicle_spawned = False
+shared_state = {
+                "departure_index": None,
+                "destination_index": None,
+            }
 
 
 
@@ -97,6 +108,16 @@ class Vehicle:
         self.break_time = None  # Time when the vehicle broke down
         self.chance_to_break = 0.0001  # 0.1% chance to break while moving
         self.animation_start_time = None  # Time when the animation started
+        self.current_road = None
+
+        # Used for the choose route functionality
+        self.violet_flag = False
+        self.destination = None
+        self.last_turn = None
+        self.arrived = False
+        self.last_intersection = None
+        self.recent_intersections = []
+
 
     def get_hitbox(self):
         """Returns the hitbox of the vehicle, extended in the direction of movement."""
@@ -147,67 +168,186 @@ class Vehicle:
 
         global break_count
 
-        if self.broken and self.break_time:
-            if time.time() - self.break_time >= TIME_TO_REPAIR:  # 3 seconds to repair
-                self.broken = False
-                self.resume()
-            return
-
-        rand = random.random()
-        if rand < self.chance_to_break:
-            self.broken = True
-            self.break_time = time.time()
-            self.animation_start_time = time.time()
-            self.stop()
-            break_count += 1
-            return
-        if not self.broken:
-            if self.current_intersection:
-                # Check if the vehicle is waiting at an intersection
-                if self.direction in ["left", "right"]:
-                    if self.current_intersection.horizontal_light.state == "red":
-                        self.stop()
-                        self.current_intersection.add_vehicle(self)
-                        return
-                elif self.direction in ["up", "down"]:
-                    if self.current_intersection.vertical_light.state == "red":
-                        self.stop()
-                        self.current_intersection.add_vehicle(self)
-                        return
-
-                # Light is green; resume movement and remove from queue
-                self.resume()
-                self.current_intersection.remove_vehicle(self)
-                self.current_intersection = None  # Clear intersection after passing
-
-                # Add a chance to change direction at the intersection
-                if random.random() < 0.3:  # 50% chance to change direction
-                    self.change_direction()
-
-            # Check for collisions
-            if self.check_collision(vehicles, self.direction):
-                self.stop()
+        if self.violet_flag:
+            if self.destination:
+                self.navigate_to_destination(intersections)
+            else:
+                self.move_along_road()
+        
+        else:
+            if self.broken and self.break_time:
+                if time.time() - self.break_time >= TIME_TO_REPAIR:  # 3 seconds to repair
+                    self.broken = False
+                    self.resume()
                 return
 
-            if self.direction == "right" or self.direction == "left":
-                target_lane_y = self.current_road.get_lane_positions(self.direction)
-                if target_lane_y is not None and abs(self.y - target_lane_y) > 1:  # Correct position gradually
-                    self.y += (target_lane_y - self.y) * 0.1
+            rand = random.random()
+            if rand < self.chance_to_break:
+                self.broken = True
+                self.break_time = time.time()
+                self.animation_start_time = time.time()
+                self.stop()
+                break_count += 1
+                return
+            if not self.broken:
+                if self.current_intersection:
+                    # Check if the vehicle is waiting at an intersection
+                    if self.direction in ["left", "right"]:
+                        if self.current_intersection.horizontal_light.state == "red":
+                            self.stop()
+                            self.current_intersection.add_vehicle(self)
+                            return
+                    elif self.direction in ["up", "down"]:
+                        if self.current_intersection.vertical_light.state == "red":
+                            self.stop()
+                            self.current_intersection.add_vehicle(self)
+                            return
 
-            elif self.direction == "down" or self.direction == "up":
-                target_lane_x = self.current_road.get_lane_positions(self.direction)
-                if target_lane_x is not None and abs(self.x - target_lane_x) > 1:  # Correct position gradually
-                    self.x += (target_lane_x - self.x) * 0.1
+                    # Light is green; resume movement and remove from queue
+                    self.resume()
+                    self.current_intersection.remove_vehicle(self)
+                    self.current_intersection = None  # Clear intersection after passing
 
-            # Continue moving in the current direction
+                    # Add a chance to change direction at the intersection
+                    if random.random() < 0.3:  # 50% chance to change direction
+                        self.change_direction()
+
+                # Check for collisions
+                if self.check_collision(vehicles, self.direction):
+                    self.stop()
+                    return
+
+                if self.direction == "right" or self.direction == "left":
+                    target_lane_y = self.current_road.get_lane_positions(self.direction)
+                    if target_lane_y is not None and abs(self.y - target_lane_y) > 1:  # Correct position gradually
+                        self.y += (target_lane_y - self.y) * 0.1
+
+                elif self.direction == "down" or self.direction == "up":
+                    target_lane_x = self.current_road.get_lane_positions(self.direction)
+                    if target_lane_x is not None and abs(self.x - target_lane_x) > 1:  # Correct position gradually
+                        self.x += (target_lane_x - self.x) * 0.1
+
+                # Continue moving in the current direction
+                if self.direction == "right":
+                    self.x += self.speed
+                elif self.direction == "left":
+                    self.x -= self.speed
+                elif self.direction == "down":
+                    self.y += self.speed
+                elif self.direction == "up":
+                    self.y -= self.speed
+
+    def move_along_road(self):
+        if self.current_road:
             if self.direction == "right":
                 self.x += self.speed
+                # if self.x > self.current_road.x + self.current_road.width:
+                #     self.x = self.current_road.x + self.current_road.width
             elif self.direction == "left":
                 self.x -= self.speed
-            elif self.direction == "down":
-                self.y += self.speed
+                # if self.x < self.current_road.x:
+                #     self.x = self.current_road.x
             elif self.direction == "up":
                 self.y -= self.speed
+                # if self.y < self.current_road.y:
+                #     self.y = self.current_road.y
+            elif self.direction == "down":
+                self.y += self.speed
+                # if self.y > self.current_road.y + self.current_road.height:
+                #     self.y = self.current_road.y + self.current_road.height
+
+    def navigate_to_destination(self, intersections):
+        MARGIN = 30  # Adjusted margin for directional adjustments
+        DETECTION_MARGIN = 20  # Margin for detecting intersections
+        DISTANCE_THRESHOLD = 20  # Distance to clear intersection
+        TURN_COOLDOWN = 1  # Cooldown in seconds
+        RECENT_VISITS_LIMIT = 5  # Limit for recently visited intersections
+
+        # Handle turn cooldown
+        if self.last_turn and (time.time() - self.last_turn) < TURN_COOLDOWN:
+            return  # Skip further checks until cooldown expires
+
+        # Handle current intersection
+        if self.current_intersection:
+            light_state = None
+            if self.direction in ["left", "right"]:
+                light_state = self.current_intersection.horizontal_light.state
+            elif self.direction in ["up", "down"]:
+                light_state = self.current_intersection.vertical_light.state
+
+            if light_state == "red":
+                self.stop()
+                self.current_intersection.add_vehicle(self)
+                return
+
+            # Light is green; resume movement
+            self.resume()
+            self.current_intersection.remove_vehicle(self)
+            self.last_intersection = self.current_intersection
+            self.current_intersection = None  # Clear intersection after passing
+
+        # Perform collision check before movement
+        if self.check_collision(vehicles, self.direction):
+            self.stop()
+            return
+
+        # Move the vehicle
+        self.move_along_road()
+
+        # Find the nearest intersection in front of the vehicle
+        if not self.current_intersection:
+            for intersection in intersections:
+                if abs(self.x - intersection.x) < DETECTION_MARGIN and abs(self.y - intersection.y) < DETECTION_MARGIN:
+                    if ((self.direction == "right" and self.x < intersection.x) or
+                        (self.direction == "left" and self.x > intersection.x) or
+                        (self.direction == "up" and self.y > intersection.y) or
+                        (self.direction == "down" and self.y < intersection.y)):
+                        
+                        # Avoid re-entering recently visited intersections
+                        if intersection not in self.recent_intersections:
+                            self.current_intersection = intersection
+                            self.recent_intersections.append(intersection)
+                            if len(self.recent_intersections) > RECENT_VISITS_LIMIT:
+                                self.recent_intersections.pop(0)
+                            break
+
+        # Clear the intersection if moved sufficiently far
+        if self.current_intersection:
+            if (abs(self.x - self.current_intersection.x) > DISTANCE_THRESHOLD or
+                abs(self.y - self.current_intersection.y) > DISTANCE_THRESHOLD):
+                self.current_intersection = None
+
+        # Adjust direction based on destination
+        if self.current_intersection:
+            if self.direction == "right":
+                if self.y < self.destination.y - MARGIN:
+                    self.direction = "down"
+                elif self.y > self.destination.y + MARGIN:
+                    self.direction = "up"
+            elif self.direction == "left":
+                if self.y < self.destination.y - MARGIN:
+                    self.direction = "down"
+                elif self.y > self.destination.y + MARGIN:
+                    self.direction = "up"
+            elif self.direction == "up":
+                if self.x < self.destination.x - MARGIN:
+                    self.direction = "left"
+                elif self.x > self.destination.x + MARGIN:
+                    self.direction = "right"
+            elif self.direction == "down":
+                if self.x < self.destination.x - MARGIN:
+                    self.direction = "right"
+                elif self.x > self.destination.x + MARGIN:
+                    self.direction = "left"
+
+            # Update turn timestamp
+            self.last_turn = time.time()
+            self.last_intersection = self.current_intersection
+
+
+        
+
+
 
     def switch_axis(self):
         if self.axis == "horizontal":
@@ -278,12 +418,16 @@ class Vehicle:
 
 
     def draw(self):
-        if self.shape == "car":
+        if self.shape == "car" and self.violet_flag:
+            pygame.draw.rect(screen, VIOLET_COLOR, (self.x, self.y, 20, 20))
+            
+        elif self.shape == "car":
             pygame.draw.rect(screen, (0, 0, 255), (self.x, self.y, 20, 20))
         elif self.shape == "motorcycle":
             pygame.draw.polygon(screen, (0, 255, 0), [(self.x, self.y), (self.x + 10, self.y - 20), (self.x + 20, self.y)])
         elif self.shape == "truck":
             pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, 30, 20))
+        
 
         if self.broken and self.animation_start_time and time.time() - self.animation_start_time <= 1:
             pygame.draw.circle(screen, (255, 0, 0), (self.x + 30, self.y), 10)
@@ -423,10 +567,11 @@ class Intersection:
             self.waiting_vehicles.remove(vehicle)
 
 class SpawnPoint:
-    def __init__(self, pos, road):
+    def __init__(self, pos, road, index):
         self.pos = pos
         self.active = False
         self.road = road
+        self.index = index
 
     def toggle_active(self):
         self.active = not self.active
@@ -434,6 +579,10 @@ class SpawnPoint:
     def draw(self, screen):
         color = (0, 255, 0) if self.active else (0, 0, 0)
         pygame.draw.circle(screen, color, self.pos, 10)
+        font = pygame.font.Font(None, 24)
+        text_surface = font.render(str(self.index), True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.pos)
+        screen.blit(text_surface, text_rect)
 
     def is_clicked(self, mouse_pos):
         x, y = self.pos
@@ -546,6 +695,20 @@ def run_pygame_simulation():
         text_surface = font.render(f"Total Waiting Time: {total_waiting_time:.2f} s", True, (0, 0, 0))
         screen.blit(text_surface, (WINDOW_WIDTH - text_surface.get_width() - 10, WINDOW_HEIGHT - text_surface.get_height() - 10))
 
+    def draw_violet_time(screen, violet_elapsed_time):
+        font = pygame.font.Font(None, 24)  # Smaller font size
+        violet_time_surface = font.render(f"Violet Time: {violet_elapsed_time:.2f} s", True, (0, 0, 0))
+        screen.blit(violet_time_surface, (WINDOW_WIDTH - violet_time_surface.get_width() - 10, WINDOW_HEIGHT - violet_time_surface.get_height() - 90))
+
+    def draw_elapsed_time(screen, start_time):
+        global elapsed_time, simulation_ended
+        if start_time is not None and not is_paused and not simulation_ended:
+            elapsed_time = time.time() - start_time
+
+        font = pygame.font.Font(None, 36)
+        text_surface = font.render(f"Elapsed Time: {elapsed_time:.2f} s", True, (0, 0, 0))
+        screen.blit(text_surface, (WINDOW_WIDTH - text_surface.get_width() - 10, WINDOW_HEIGHT - text_surface.get_height() - 50))
+
 
     # Vehicle spawning timer
     vehicle_spawn_timer = 0  # Timer to keep track of the elapsed time
@@ -556,18 +719,23 @@ def run_pygame_simulation():
 
     # Define spawn points at the edges of the screen
     spawn_points = []
+    spawn_point_index = 1
 
     for road in roads:
         if road.width > road.height:  # Horizontal road
             if road.x == start_x:  # Left edge
-                spawn_points.append(SpawnPoint((road.x + 30, road.y + road.height // 2), road))
+                spawn_points.append(SpawnPoint((road.x + 30, road.y + road.height // 2), road, spawn_point_index))
+                spawn_point_index += 1
             elif road.x + road.width == start_x + grid_width:  # Right edge
-                spawn_points.append(SpawnPoint((road.x + road.width - 30, road.y + road.height // 2), road))
+                spawn_points.append(SpawnPoint((road.x + road.width - 30, road.y + road.height // 2), road, spawn_point_index))
+                spawn_point_index += 1
         else:  # Vertical road
             if road.y == start_y:  # Top edge
-                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + 30), road))
+                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + 30), road, spawn_point_index))
+                spawn_point_index += 1
             elif road.y + road.height == start_y + grid_height:  # Bottom edge
-                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + road.height - 30), road))
+                spawn_points.append(SpawnPoint((road.x + road.width // 2, road.y + road.height - 30), road, spawn_point_index))
+                spawn_point_index += 1
 
 
 
@@ -586,19 +754,12 @@ def run_pygame_simulation():
         play_pause_button.text = "Pause" if not is_paused else "Play"
 
 
-    def draw_elapsed_time(screen, start_time):
-        global elapsed_time, simulation_ended
-        if start_time is not None and not is_paused and not simulation_ended:
-            elapsed_time = time.time() - start_time
-
-        font = pygame.font.Font(None, 36)
-        text_surface = font.render(f"Elapsed Time: {elapsed_time:.2f} s", True, (0, 0, 0))
-        screen.blit(text_surface, (WINDOW_WIDTH - text_surface.get_width() - 10, WINDOW_HEIGHT - text_surface.get_height() - 50))
+    
             
 
 
     def reset_simulation():
-        global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused, total_waiting_time, break_count, elapsed_time, is_raining, simulation_ended
+        global vehicles, vehicle_spawn_timer, vehicle_spawned_count, is_paused, total_waiting_time, break_count, elapsed_time, is_raining, simulation_ended, paused_time, start_time, violet_vehicle_spawned, violet_elapsed_time, violet_start_time
         vehicles = []
         vehicle_spawn_timer = 0
         vehicle_spawned_count = 0
@@ -609,6 +770,11 @@ def run_pygame_simulation():
         elapsed_time = 0
         is_raining = False
         simulation_ended = False
+        paused_time = 0
+        start_time = None
+        violet_vehicle_spawned = False
+        violet_start_time = 0
+        violet_elapsed_time = 0
 
     def draw_simulation_ended_message(screen):
         font = pygame.font.Font(None, 72)
@@ -643,6 +809,9 @@ def run_pygame_simulation():
         elapsed_time_text = f"Elapsed Time: {elapsed_time:.2f} s\n"
         elapsed_time_label = tk.Label(stats_window, text=elapsed_time_text)
         elapsed_time_label.pack(pady=10)  # Reduced padding
+
+        violet_time_label = tk.Label(stats_window, text=f"Violet Vehicle Time: {violet_elapsed_time:.2f} s")
+        violet_time_label.pack(pady=10)
 
 
         # Example statistics
@@ -698,6 +867,95 @@ def run_pygame_simulation():
             for vehicle in vehicles:
                 vehicle.speed /= 0.4  # Restore original speed
 
+    def open_select_route_window():
+        def create_window():
+            root = tk.Tk()
+            root.withdraw()  # Hide the unnecessary root window
+
+            # Create a new Tkinter window
+            route_window = tk.Toplevel()
+            route_window.title("Select Route")
+            route_window.geometry("600x500")
+
+            # Create a frame to hold the listboxes side by side
+            frame = tk.Frame(route_window)
+            frame.pack(pady=20)
+
+            # Add content to the window (e.g., labels, entry fields, buttons)
+            tk.Label(frame, text="Select a departure point:").grid(row=0, column=0, padx=10)
+            tk.Label(frame, text="Select a destination point:").grid(row=0, column=1, padx=10)
+
+            # Create a listbox to display the range of departure spawn points
+            departure_listbox = tk.Listbox(frame)
+            for spawn_point in spawn_points:
+                departure_listbox.insert(tk.END, f"Spawn Point {spawn_point.index}")
+            departure_listbox.grid(row=1, column=0, padx=10)
+
+            # Create a listbox to display the range of destination spawn points
+            destination_listbox = tk.Listbox(frame)
+            for intersection in intersections:
+                destination_listbox.insert(tk.END, f"Intersection {intersection.index}")
+            destination_listbox.grid(row=1, column=1, padx=10)
+
+            # Shared state to hold the selections
+            global shared_state
+            
+
+            def confirm_selection_departure():
+                selection = departure_listbox.curselection()
+                if not selection:
+                    messagebox.showerror("Error", "Please select a departure point.")
+                    return
+                global shared_state
+                
+                shared_state["departure_index"] = departure_listbox.get(selection[0])
+                messagebox.showinfo("Success", f"Departure point selected: {shared_state['departure_index']}")
+
+            def confirm_selection_destination():
+                selection = destination_listbox.curselection()
+                if not selection:
+                    messagebox.showerror("Error", "Please select a destination point.")
+                    return
+                
+                global shared_state
+
+
+                shared_state["destination_index"] = destination_listbox.get(selection[0])
+
+                if shared_state["departure_index"] is None:
+                    messagebox.showerror("Error", "Please select a departure point first.")
+                    return
+
+                if shared_state["departure_index"] == shared_state["destination_index"]:
+                    messagebox.showerror("Error", "Departure and destination points cannot be the same.")
+                else:
+                    messagebox.showinfo(
+                        "Success",
+                        f"Route selected: {shared_state['departure_index']} to {shared_state['destination_index']}",
+                    )
+                    route_window.destroy()
+
+            # Add buttons to confirm the selection
+            confirm_departure_button = tk.Button(
+                route_window, text="Confirm Departure", command=confirm_selection_departure
+            )
+            confirm_departure_button.pack(pady=10)
+
+            confirm_destination_button = tk.Button(
+                route_window, text="Confirm Destination", command=confirm_selection_destination
+            )
+            confirm_destination_button.pack(pady=10)
+
+            # Add a button to close the window
+            close_button = tk.Button(route_window, text="Close", command=route_window.destroy)
+            close_button.pack(pady=10)
+
+            route_window.mainloop()
+
+
+        # Start the Tkinter window in a separate thread
+        threading.Thread(target=create_window, daemon=True).start()
+
     # Buttons
 
     play_pause_button = Button(WINDOW_WIDTH - 110, 10, 100, 50, "Play", toggle_play_pause)
@@ -705,8 +963,8 @@ def run_pygame_simulation():
     menu_button = Button(10, 10, 100, 50, "Menu", show_menu)
     stats_button = Button(WINDOW_WIDTH - 110, 130, 100, 50, "Stats", show_stats)  # Add Stats button in upper right corner
     exit_button = Button(10, 70, 100, 50, "Exit", exit_program)
-    rain_button = Button(10, WINDOW_HEIGHT - 60, 150, 50, "Starts raining", start_raining)
-
+    rain_button = Button(10, WINDOW_HEIGHT - 60, 175, 50, "Starts raining", start_raining)
+    select_route_button = Button(WINDOW_WIDTH // 2 - 100, 10, 200, 50, "Select Route", open_select_route_window)
     
     
     
@@ -718,6 +976,8 @@ def run_pygame_simulation():
     clock = pygame.time.Clock()
     global is_raining
     is_raining = False
+    violet_start_time = None  # Initialize violet vehicle start time
+    violet_elapsed_time = 0  # Initialize violet vehicle elapsed time
 
     while running:
         for event in pygame.event.get():
@@ -734,9 +994,11 @@ def run_pygame_simulation():
                 stats_button.handle_event(event)
                 exit_button.handle_event(event)
                 rain_button.handle_event(event)
+                select_route_button.handle_event(event)
 
         # Get the elapsed time since the game started
         current_time = pygame.time.get_ticks()
+        
 
         # Spawn vehicles progressively at the specified rate
         
@@ -765,8 +1027,6 @@ def run_pygame_simulation():
 
 
         if not is_paused:
-            
-
             if vehicle_spawned_count < total_vehicle_count:
                 if current_time // 1000 > vehicle_spawn_timer:
                     for spawn_point in spawn_points:
@@ -775,6 +1035,37 @@ def run_pygame_simulation():
                                 vehicles.append(spawn_vehicle_on_road(spawn_point, "car", (1, 2)))  # Adjust shape/speed if needed
                                 vehicle_spawned_count += 1
                     vehicle_spawn_timer = current_time // 1000  # Update the timer
+
+
+             # Check if half of the total vehicles have been spawned and spawn a violet vehicle
+            global shared_state, violet_vehicle_spawned
+            if vehicle_spawned_count >= total_vehicle_count // 2 and not violet_vehicle_spawned:
+                if shared_state["departure_index"] is not None and shared_state["destination_index"] is not None:
+                    departure_spawn_point = next(sp for sp in spawn_points if f"Spawn Point {sp.index}" == shared_state["departure_index"])
+                    destination_intersection = next(i for i in intersections if f"Intersection {i.index}" == shared_state["destination_index"])
+                    violet_vehicle = Vehicle(departure_spawn_point.pos[0], departure_spawn_point.pos[1], "car", (1, 2), "right")
+                    violet_vehicle.color = VIOLET_COLOR  # Violet color
+                    violet_vehicle.violet_flag = True
+                    violet_vehicle.current_road = departure_spawn_point.road  # Assign the road of the spawn point
+                    violet_vehicle.destination = destination_intersection  # Set the destination
+
+                    # Setting the direction
+                    if violet_vehicle.x - 50 < 0:
+                        violet_vehicle.direction = "right"
+                    elif violet_vehicle.x + 50 > WINDOW_WIDTH:
+                        violet_vehicle.direction = "left"
+                    elif violet_vehicle.y -50 < 0:
+                        violet_vehicle.direction = "down"
+                    else:
+                        violet_vehicle.direction = "up"
+
+                    vehicles.append(violet_vehicle)
+                    violet_vehicle_spawned = True
+                    violet_start_time = current_time  # Start the violet vehicle timer
+
+            # Update the violet vehicle elapsed time
+            if violet_vehicle_spawned and violet_start_time is not None:
+                violet_elapsed_time = (current_time - violet_start_time) / 1000  # Calculate elapsed time in seconds
 
             for intersection in intersections:
                 intersection.update_cars_waiting(vehicles)
@@ -825,14 +1116,30 @@ def run_pygame_simulation():
         for vehicle in vehicles:
             vehicle.draw()
 
-        
+        # Despawning vehicles
         vehicles = [vehicle for vehicle in vehicles if vehicle.x >= 0 and vehicle.x <= WINDOW_WIDTH and vehicle.y >= 0 and vehicle.y <= WINDOW_HEIGHT]
+        
+
+        for vehicle in vehicles:
+        #     if vehicle.violet_flag:
+        #         if vehicle.current_intersection == vehicle.destination:
+        #             print("arrived")
+        # vehicles = [vehicle for vehicle in vehicles if not(vehicle.violet_flag and vehicle.current_intersection == vehicle.destination)]
+            if vehicle.violet_flag and violet_start_time and vehicle.current_intersection == vehicle.destination:
+                violet_elapsed_time = (current_time - violet_start_time) / 1000  # Finalize elapsed time
+                violet_start_time = None  # Stop the timer
+                # violet_vehicle_arrived = True  # Set the flag to indicate arrival
+                vehicles.remove(vehicle)  # Despawn the violet vehicle
+
+        
+
         play_pause_button.draw(screen)
         reset_button.draw(screen)
         menu_button.draw(screen)
         stats_button.draw(screen)
         exit_button.draw(screen)
         rain_button.draw(screen)
+        select_route_button.draw(screen)
 
         # Calculate and draw total waiting time
         total_waiting_time = get_total_waiting_time()
@@ -840,6 +1147,11 @@ def run_pygame_simulation():
 
         # Draw elapsed time
         draw_elapsed_time(screen, start_time)
+
+         # Draw violet vehicle elapsed time
+        draw_violet_time(screen, violet_elapsed_time)
+
+
         global simulation_ended
         if len(vehicles) == 0 and vehicle_spawned_count >= total_vehicle_count:
             simulation_ended = True
@@ -895,6 +1207,7 @@ def initialize_tkinter_window():
     VEHICLE_SPAWN_RATE = 2
     VEHICLE_SPAWN_DURATION = 15
 
+
     root = tk.Tk()
     root.title("Traffic Simulation")
     root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -938,6 +1251,7 @@ def exit_simulation():
 
 def exit_program():
     sys.exit()
+
 
 if __name__ == "__main__":
     initialize_tkinter_window()
