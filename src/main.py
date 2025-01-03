@@ -587,7 +587,7 @@ def initialize_tkinter_window():
         grid_size_entry.insert(0, str(GRID_SIZE))
         grid_size_entry.pack(pady=5)
 
-        tk.Label(settings_window, text="Car Number:").pack(pady=5)
+        tk.Label(settings_window, text="Number of cars per second:").pack(pady=5)
         car_number_entry = tk.Entry(settings_window)
         car_number_entry.insert(0, str(VEHICLE_SPAWN_RATE))
         car_number_entry.pack(pady=5)
@@ -603,9 +603,7 @@ def initialize_tkinter_window():
             GRID_SIZE = int(grid_size_entry.get())
             VEHICLE_SPAWN_RATE = int(car_number_entry.get())
             VEHICLE_SPAWN_DURATION = int(seconds_entry.get())
-            # Calculating user depending data
-            ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
-            ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
+           
             settings_window.destroy()
             update_settings_display()
 
@@ -613,12 +611,55 @@ def initialize_tkinter_window():
         save_button.pack(pady=20)
 
     def update_settings_display():
-        settings_text.set(f"Grid Size: {GRID_SIZE}\nCar Number: {VEHICLE_SPAWN_RATE}\nNumber of Seconds: {VEHICLE_SPAWN_DURATION}")
+        settings_text.set(f"Grid Size: {GRID_SIZE}\nNumber of cars per second: {VEHICLE_SPAWN_RATE}\nNumber of Seconds: {VEHICLE_SPAWN_DURATION}")
 
-    # Initialize default settings
-    GRID_SIZE = 2
-    VEHICLE_SPAWN_RATE = 2
-    VEHICLE_SPAWN_DURATION = 15
+    def open_instructions_window():
+        instructions_window = tk.Toplevel(root)
+        instructions_window.title("Instructions")
+        instructions_window.geometry("400x500")
+
+        # Create a canvas and scrollbars
+        canvas = tk.Canvas(instructions_window)
+        scrollbar_vert = tk.Scrollbar(instructions_window, orient="vertical", command=canvas.yview)
+        scrollbar_horiz = tk.Scrollbar(instructions_window, orient="horizontal", command=canvas.xview)
+        scrollable_frame = tk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar_vert.set, xscrollcommand=scrollbar_horiz.set)
+
+        # Pack the canvas and scrollbars
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar_vert.pack(side="right", fill="y")
+        scrollbar_horiz.pack(side="bottom", fill="x")
+
+        # Add instructions text
+        instructions_text = """
+        Instructions:
+        1. Open the settings window and configure the simulation parameters: grid size, 
+        number of cars spawned per second and number of seconds of spawning.
+        2. Click 'Start Simulation' to begin the simulation with classic trafficlights.
+        3. Click 'Start Smart Simulation' for an advanced simulation with smart trafficlights.
+        4. Press the "Choose a Route" button to select a specific spawn point and destination 
+        for your car to use
+        5. You can press the "Start Raining Button" to simulate raining conditions, so the 
+        speen of all vehicles will decrease by 30%
+        6. You can Play, Pause and Reset
+        7. In the bottom right corner you will see the elapsed time, the total waiting time (the summ 
+        of all the times that each vehicle spent in an intersection) and the violet car time, which is 
+        the time that your car took to reach the destination from the spawnpoint
+        8. In the upper right corner you can pree the stats button to open a new window, that will show
+        you statistics about the simulation you've ran
+        9. Use the 'Exit' button to close the application.
+        """
+        tk.Label(scrollable_frame, text=instructions_text, justify=tk.LEFT, padx=10, pady=10, wraplength=380).pack()
+
 
     # Initialisations
 
@@ -648,6 +689,10 @@ def initialize_tkinter_window():
     start_button = tk.Button(button_frame, text="Start Simulation", command=lambda: start_simulation(root, False))
     start_button.pack(expand=True)
 
+    # Create the instructions button
+    instructions_button = tk.Button(root, text="Instructions", command=open_instructions_window)
+    instructions_button.pack(pady=10)
+
     # Create the exit button
     exit_button = tk.Button(root, text="Exit", command=exit_program)
     exit_button.pack(pady=20)
@@ -661,6 +706,10 @@ def initialize_tkinter_window():
     root.mainloop()
 
 def start_simulation(root, smart):
+    global ROAD_WIDTH, ROAD_HEIGHT
+     # Calculating user depending data
+    ROAD_WIDTH = WINDOW_WIDTH // GRID_SIZE
+    ROAD_HEIGHT = WINDOW_HEIGHT // GRID_SIZE
     root.destroy()  # Close the Tkinter window
     run_pygame_simulation(smart)  # Function to run the Pygame simulation
 
