@@ -1,8 +1,12 @@
 # Descriere
 Pentru ca toti 3 traim in Bucuresti, suntem obisnuiti si constienti de cat de mult timp din viata pierdem in trafic, asa ca am incercat sa creem o aplicatie care sa permita vizualizarea traficului si implementarea a doua tipuri de semafoare: normale si inteligente. Astfel, speram noi, se poate observa cat de mult ajuta varianta din urma. Mentionam si ca timpii de asteptare ai semafoarelor, dar si "rationamentele" folosite pentu semafoarele inteligente sunt oarecum naive, in ideea in care am cautat noi niste valori care sa fie rezonabile pentru timpii de asteptare, insa intr-o implementare din viata reala acestia ar fi alesi in functie de o multitudine de studii si date despre trafic.
+
 De asemenea, pentru ca suntem consitenti de faptul ca traficul este intr-o foarte mare masura imprevizibil si foarte dependent de diversi factori umani, am incerat sa includem cateva elemente care sa simuleze acest aspect. Astfel, vitezele masinilor sunt diferite (dar incluse dar respecta totusi un range), directiile in care o iau masinile sunt alese random, masinile au o sansa foarte mica de a se strica, moment in care apare un cerc rosu langa ele si se opresc (cu asta am vurt sa simulam si evenimente din viata reala precum accidentele), iar utilizatorul poate sa "porneasca ploaia" ceea ce le scade tuturor participantilor la trafic viteza. 
+
 Pentru a si concretiza toate aceste lucruri si diferente dintre cele doua tipuri se semafoare, am adaugat si o functionalitate care ii permite utilizatorului sa isi aleaga un punct de plecare si de sosire, iar programul va calcula cea mai scurta ruta intre acele 2 puncte. Astfel, utilizatorul va putea si "sa faca parte din trafic" si sa observe cum este impactat de diferite lucruri care se pot intampla in trafic.
+
 Utilizatorul are libertate completa sa genereze fluxul traficului dupa bunul plac, el alegand numarul de masini care sa se spawneze pe secunda, numarul de secunde pentru care sa se spawneze masinile, dar si locurile (spawn pointurile) de unde sa plece masinile.
+
 Pentru a fi mai usor de tras concluzii, am adaugat si cateva statistici (numar de masini/intersectie, timp total de asteptare in intersectii, timpul in care a rulat simularea, timpul luat de vehicului ales de utilizator sa ajunga de la punctul de plecare la destinatie etc)
 
 # Link Github:
@@ -11,10 +15,14 @@ https://github.com/MateiStefanica0/trafficlights-simulator
 
 # Instructiuni:
 Recomandam ca la prima rulare a programului sa se foloseasca comanda `make install` din root-ul proiectului, pentru a fi instalate toate dependintele si versiunile necesare de biblioteci. Dupa aceea, pentru a putea rula, se poate folosi comanda `make run` sau se poate rula direct `python3 main.py` din folderul `src`
-In fereastra principala a proiectului utilizatorul poate sa isi aleaga propriile setari sau sa le lase pe cele default si are 2 variante de simulare: normala sau ceva cu semafoare inteligente
+
+In fereastra principala a proiectului utilizatorul poate sa isi aleaga propriile setari sau sa le lase pe cele default si are 2 variante de simulare: normala sau cea cu semafoare inteligente.
+
 !! Nu recomandam un grid mai mare de 6x6, mai mult de 5-6 masini pe secunda sau mai mult de 150-200 de masini per total, din cauza limitarilor de performanta ale PyGame, care vor face simulare sa aiba lag (mentionam ca valorile acestea sunt orientative si depind foarte mult si de ce spawnpointuri alege utilizatorul)
-Diferenta dintre cele 2 simulari este, evident, tipul semafoarelor
+Diferenta dintre cele 2 simulari este, evident, tipul semafoarelor.
+
 In fereastra de simulare utilizatorul are in dreapta sus butoane de `Play/Pause`, `Reset` si `Stats`, in stanga sus butoanele de `Exit` si `Menu` (in caz ca utilizatorul vrea sa schimbe tipul simularii sau variabilele de rulare), in stanga jos butonul de `Start raining`, in dreapta jos timpii de rulare ai simularii (Total waiting time este suma tuturor timpilor de asteptare ai tuturor masinilor in intersectii) si mijloc sus butonul de `Choose a route`.
+
 La apasarea butonului `Choose a route` se deschide o alta fereastra care ii permite utilizatorului sa aleaga spawn pointul si destinatia. Apoi, dupa ce apasa Play, vehiculul violet se spawneaza dupa ce jumatate din celelalte vehicule s-au spawnat
 
 
