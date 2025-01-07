@@ -10,7 +10,7 @@ Pentru a fi mai usor de tras concluzii, am adaugat si cateva statistici (numar d
 https://github.com/MateiStefanica0/trafficlights-simulator
 
 # Instructiuni:
-Recomandam ca la prima rulare a programului sa se foloseasca comanda `make run` din root-ul proiectului, pentru a fi instalate toate dependintele si versiunile necesare de biblioteci. Dupa aceea, pentru a putea rula mai usor, se poate rula direct `python3 main.py` din folderul src
+Recomandam ca la prima rulare a programului sa se foloseasca comanda `make install` din root-ul proiectului, pentru a fi instalate toate dependintele si versiunile necesare de biblioteci. Dupa aceea, pentru a putea rula, se poate folosi comanda `make run` sau se poate rula direct `python3 main.py` din folderul `src`
 In fereastra principala a proiectului utilizatorul poate sa isi aleaga propriile setari sau sa le lase pe cele default si are 2 variante de simulare: normala sau ceva cu semafoare inteligente
 !! Nu recomandam un grid mai mare de 6x6, mai mult de 5-6 masini pe secunda sau mai mult de 150-200 de masini per total, din cauza limitarilor de performanta ale PyGame, care vor face simulare sa aiba lag (mentionam ca valorile acestea sunt orientative si depind foarte mult si de ce spawnpointuri alege utilizatorul)
 Diferenta dintre cele 2 simulari este, evident, tipul semafoarelor
