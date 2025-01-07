@@ -665,7 +665,7 @@ def initialize_tkinter_window():
 
     root = tk.Tk()
     root.title("Traffic Simulation")
-    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+    root.geometry("500x500")
 
     # Create a menu bar
     menu_bar = tk.Menu(root)

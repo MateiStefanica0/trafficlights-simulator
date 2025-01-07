@@ -256,8 +256,8 @@ class Vehicle:
                         if intersection not in self.recent_intersections:
                             self.current_intersection = intersection
                             self.recent_intersections.append(intersection)
-                            if len(self.recent_intersections) > RECENT_VISITS_LIMIT:
-                                self.recent_intersections.pop(0)
+                            # if len(self.recent_intersections) > RECENT_VISITS_LIMIT:
+                            #     self.recent_intersections.pop(0)
                             break
 
         # Clear the intersection if moved sufficiently far

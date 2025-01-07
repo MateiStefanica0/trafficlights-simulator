@@ -7,6 +7,8 @@ Pentru a fi mai usor de tras concluzii, am adaugat si cateva statistici (numar d
 
 # Link Github:
 
+https://github.com/MateiStefanica0/trafficlights-simulator
+
 # Instructiuni:
 Recomandam ca la prima rulare a programului sa se foloseasca comanda `make run` din root-ul proiectului, pentru a fi instalate toate dependintele si versiunile necesare de biblioteci. Dupa aceea, pentru a putea rula mai usor, se poate rula direct `python3 main.py` din folderul src
 In fereastra principala a proiectului utilizatorul poate sa isi aleaga propriile setari sau sa le lase pe cele default si are 2 variante de simulare: normala sau ceva cu semafoare inteligente
