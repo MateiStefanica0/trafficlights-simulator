@@ -1,27 +1,13 @@
-# Define the Python interpreter
-PYTHON := python3
-
-# Define the pip command
-PIP := pip3
-
-# Define the requirements file
-REQUIREMENTS := requirements.txt
-
-# Define the main script
-MAIN_SCRIPT := ./src/main.py
+# Variables
+PYTHON_SCRIPT=./src/main.py
+REQUIREMENTS=requirements.txt
 
 # Install dependencies
+.PHONY: install
 install:
-	$(PIP) install --upgrade pip
-	$(PIP) install -r $(REQUIREMENTS)
+	pip install -r $(REQUIREMENTS)
 
-# Run the main script
-run: install
-	$(PYTHON) $(MAIN_SCRIPT)
-
-# Clean up any generated files (optional)
-clean:
-	find . -type f -name '*.pyc' -delete
-	find . -type d -name '__pycache__' -delete
-
-.PHONY: install run clean
+# Run the application
+.PHONY: run
+run:
+	python3 $(PYTHON_SCRIPT)
